@@ -1,0 +1,1647 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+// ================================================================
+// Cluster A: Tenancy and Access
+// ================================================================
+
+model Tenant {
+  id                     BigInt                  @id @default(autoincrement())
+  planId                 BigInt                  @map("plan_id")
+  name                   String                  @db.VarChar(100)
+  status                 String                  @db.VarChar(30)
+  paymentModel           String                  @db.VarChar(30) @map("payment_model")
+  domain                 String?                 @db.VarChar(255)
+  createdAt              DateTime                @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt              DateTime                @updatedAt @db.Timestamptz(6) @map("updated_at")
+  version                Int                     @default(1)
+  plan                   Plan                    @relation("fk_1_tenant_plan_id", fields: [planId], references: [id])
+  tenantProductTypes     TenantProductType[]     @relation("fk_2_tenant_product_type_tenant_id")
+  branches               Branch[]                @relation("fk_4_branch_tenant_id")
+  agents                 Agent[]                 @relation("fk_5_agent_tenant_id")
+  tenantSettings         TenantSetting[]         @relation("fk_8_tenant_setting_tenant_id")
+  memberships            Membership[]            @relation("fk_10_membership_tenant_id")
+  roles                  Role[]                  @relation("fk_13_role_tenant_id")
+  approvalRequests       ApprovalRequest[]       @relation("fk_16_approval_request_tenant_id")
+  customerProfiles       CustomerProfile[]       @relation("fk_19_customer_profile_tenant_id")
+  savedTravelers         SavedTraveler[]         @relation("fk_21_saved_traveler_tenant_id")
+  savedTravelerDocuments SavedTravelerDocument[] @relation("fk_23_saved_traveler_document_tenant_id")
+  customerSessions       CustomerSession[]       @relation("fk_26_customer_session_tenant_id")
+  salesDomains           SalesDomain[]           @relation("fk_27_sales_domain_tenant_id")
+  apiKeys                ApiKey[]                @relation("fk_28_api_key_tenant_id")
+  webhookEndpoints       WebhookEndpoint[]       @relation("fk_30_webhook_endpoint_tenant_id")
+  outboxEvents           OutboxEvent[]           @relation("fk_31_outbox_event_tenant_id")
+  idempotencyKeys        IdempotencyKey[]        @relation("fk_32_idempotency_key_tenant_id")
+  rules                  Rule[]                  @relation("fk_41_rule_tenant_id")
+  templates              Template[]              @relation("fk_43_template_tenant_id")
+  offerings              Offering[]              @relation("fk_46_offering_tenant_id")
+  layoutTemplates        LayoutTemplate[]        @relation("fk_49_layout_template_tenant_id")
+  resources              Resource[]              @relation("fk_54_resource_tenant_id")
+  serviceLines           ServiceLine[]           @relation("fk_60_service_line_tenant_id")
+  schedules              Schedule[]              @relation("fk_64_schedule_tenant_id")
+  fareRules              FareRule[]              @relation("fk_67_fare_rule_tenant_id")
+  ancillaryProducts      AncillaryProduct[]      @relation("fk_70_ancillary_product_tenant_id")
+  ancillaryOffers        AncillaryOffer[]        @relation("fk_72_ancillary_offer_tenant_id")
+  trips                  Trip[]                  @relation("fk_74_trip_tenant_id")
+  tripUnits              TripUnit[]              @relation("fk_80_trip_unit_tenant_id")
+  holds                  Hold[]                  @relation("fk_88_hold_tenant_id")
+  allocationRules        AllocationRule[]        @relation("fk_96_allocation_rule_tenant_id")
+  allocationEvents       AllocationEvent[]       @relation("fk_99_allocation_event_tenant_id")
+  tripChanges            TripChange[]            @relation("fk_103_trip_change_tenant_id")
+  bookings               Booking[]               @relation("fk_106_booking_tenant_id")
+  travelers              Traveler[]              @relation("fk_111_traveler_tenant_id")
+  travelerDocuments      TravelerDocument[]      @relation("fk_113_traveler_document_tenant_id")
+  bookingItems           BookingItem[]           @relation("fk_115_booking_item_tenant_id")
+  bookingPriceLines      BookingPriceLine[]      @relation("fk_121_booking_price_line_tenant_id")
+  tickets                Ticket[]                @relation("fk_125_ticket_tenant_id")
+  payments               Payment[]               @relation("fk_127_payment_tenant_id")
+  refunds                Refund[]                @relation("fk_129_refund_tenant_id")
+  promos                 Promo[]                 @relation("fk_133_promo_tenant_id")
+  promoRedemptions       PromoRedemption[]       @relation("fk_134_promo_redemption_tenant_id")
+  walletAccounts         WalletAccount[]         @relation("fk_138_wallet_account_tenant_id")
+  loyaltyAccounts        LoyaltyAccount[]        @relation("fk_140_loyalty_account_tenant_id")
+  ledgerEntries          LedgerEntry[]           @relation("fk_142_ledger_entry_tenant_id")
+  settlements            Settlement[]            @relation("fk_143_settlement_tenant_id")
+  notificationLogs       NotificationLog[]       @relation("fk_144_notification_log_tenant_id")
+  supplierConnections    SupplierConnection[]    @relation("fk_146_supplier_connection_tenant_id")
+  externalMappings       ExternalMapping[]       @relation("fk_148_external_mapping_tenant_id")
+  integrationLogs        IntegrationLog[]        @relation("fk_152_integration_log_tenant_id")
+  crewMembers            CrewMember[]            @relation("fk_154_crew_member_tenant_id")
+  crewDocuments          CrewDocument[]          @relation("fk_158_crew_document_tenant_id")
+  crewLeaves             CrewLeave[]             @relation("fk_160_crew_leave_tenant_id")
+  crewRequirements       CrewRequirement[]       @relation("fk_162_crew_requirement_tenant_id")
+  resourceCrews          ResourceCrew[]          @relation("fk_166_resource_crew_tenant_id")
+  tripCrews              TripCrew[]              @relation("fk_169_trip_crew_tenant_id")
+
+  @@index([planId])
+  @@map("tenant")
+}
+
+model TenantProductType {
+  tenantId      BigInt      @map("tenant_id")
+  productTypeId BigInt      @map("product_type_id")
+  isActive      Boolean     @map("is_active")
+  tenant        Tenant      @relation("fk_2_tenant_product_type_tenant_id", fields: [tenantId], references: [id])
+  productType   ProductType @relation("fk_3_tenant_product_type_product_type_id", fields: [productTypeId], references: [id])
+
+  @@id([tenantId, productTypeId])
+  @@index([productTypeId])
+  @@map("tenant_product_type")
+}
+
+model Branch {
+  id              BigInt           @id @default(autoincrement())
+  tenantId        BigInt           @map("tenant_id")
+  code            String           @db.VarChar(50)
+  name            String           @db.VarChar(100)
+  city            String?          @db.VarChar(100)
+  address         String?          @db.Text
+  phone           String?          @db.VarChar(30)
+  tenant          Tenant           @relation("fk_4_branch_tenant_id", fields: [tenantId], references: [id])
+  agents          Agent[]          @relation("fk_6_agent_branch_id")
+  memberships     Membership[]     @relation("fk_11_membership_branch_id")
+  tripUnits       TripUnit[]       @relation("fk_82_trip_unit_branch_id")
+  holds           Hold[]           @relation("fk_92_hold_branch_id")
+  allocationRules AllocationRule[] @relation("fk_97_allocation_rule_branch_id")
+  bookings        Booking[]        @relation("fk_108_booking_branch_id")
+  crewMembers     CrewMember[]     @relation("fk_156_crew_member_branch_id")
+
+  @@index([tenantId])
+  @@map("branch")
+}
+
+model Agent {
+  id              BigInt           @id @default(autoincrement())
+  tenantId        BigInt           @map("tenant_id")
+  branchId        BigInt?          @map("branch_id")
+  name            String           @db.VarChar(100)
+  phone           String?          @db.VarChar(30)
+  email           String?          @db.VarChar(100)
+  creditLimit     BigInt           @map("credit_limit")
+  currentBalance  BigInt           @map("current_balance")
+  commissionRate  Decimal          @db.Decimal(5, 2) @map("commission_rate")
+  status          String           @db.VarChar(30)
+  tenant          Tenant           @relation("fk_5_agent_tenant_id", fields: [tenantId], references: [id])
+  branch          Branch?          @relation("fk_6_agent_branch_id", fields: [branchId], references: [id])
+  apiKeys         ApiKey[]         @relation("fk_29_api_key_agent_id")
+  tripUnits       TripUnit[]       @relation("fk_83_trip_unit_agent_id")
+  holds           Hold[]           @relation("fk_93_hold_agent_id")
+  allocationRules AllocationRule[] @relation("fk_98_allocation_rule_agent_id")
+  bookings        Booking[]        @relation("fk_109_booking_agent_id")
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@map("agent")
+}
+
+model Plan {
+  id           BigInt        @id @default(autoincrement())
+  code         String        @unique @db.VarChar(50)
+  name         String        @db.VarChar(100)
+  tenants      Tenant[]      @relation("fk_1_tenant_plan_id")
+  planFeatures PlanFeature[] @relation("fk_7_plan_feature_plan_id")
+
+  @@map("plan")
+}
+
+model PlanFeature {
+  planId     BigInt  @map("plan_id")
+  featureKey String  @db.VarChar(50) @map("feature_key")
+  config     Json?
+  isEnabled  Boolean @map("is_enabled")
+  plan       Plan    @relation("fk_7_plan_feature_plan_id", fields: [planId], references: [id])
+
+  @@id([planId, featureKey])
+  @@map("plan_feature")
+}
+
+model TenantSetting {
+  id        BigInt   @id @default(autoincrement())
+  tenantId  BigInt   @map("tenant_id")
+  scopeType String   @db.VarChar(50) @map("scope_type")
+  scopeId   BigInt   @map("scope_id")
+  key       String   @db.VarChar(100)
+  value     Json?
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  tenant    Tenant   @relation("fk_8_tenant_setting_tenant_id", fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("tenant_setting")
+}
+
+model StaffUser {
+  id                        BigInt            @id @default(autoincrement())
+  email                     String?           @db.VarChar(100)
+  phone                     String?           @db.VarChar(30)
+  fullName                  String            @db.VarChar(100) @map("full_name")
+  mfaEnabled                Boolean           @map("mfa_enabled")
+  status                    String            @db.VarChar(30)
+  createdAt                 DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  memberships               Membership[]      @relation("fk_9_membership_staff_user_id")
+  approvalRequestsByMaker   ApprovalRequest[] @relation("fk_17_approval_request_maker_id")
+  approvalRequestsByChecker ApprovalRequest[] @relation("fk_18_approval_request_checker_id")
+  holds                     Hold[]            @relation("fk_91_hold_staff_user_id")
+  allocationEvents          AllocationEvent[] @relation("fk_102_allocation_event_actor_id")
+  tripChanges               TripChange[]      @relation("fk_105_trip_change_actor_id")
+  bookings                  Booking[]         @relation("fk_110_booking_sold_by")
+  refunds                   Refund[]          @relation("fk_132_refund_approved_by")
+  crewMember                CrewMember?       @relation("fk_155_crew_member_staff_user_id")
+  tripCrews                 TripCrew[]        @relation("fk_172_trip_crew_assigned_by")
+
+  @@map("staff_user")
+}
+
+model Membership {
+  id          BigInt    @id @default(autoincrement())
+  staffUserId BigInt    @map("staff_user_id")
+  tenantId    BigInt?   @map("tenant_id")
+  branchId    BigInt?   @map("branch_id")
+  roleId      BigInt    @map("role_id")
+  status      String    @db.VarChar(30)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  staffUser   StaffUser @relation("fk_9_membership_staff_user_id", fields: [staffUserId], references: [id])
+  tenant      Tenant?   @relation("fk_10_membership_tenant_id", fields: [tenantId], references: [id])
+  branch      Branch?   @relation("fk_11_membership_branch_id", fields: [branchId], references: [id])
+  role        Role      @relation("fk_12_membership_role_id", fields: [roleId], references: [id])
+
+  @@index([staffUserId])
+  @@index([tenantId])
+  @@index([branchId])
+  @@index([roleId])
+  @@map("membership")
+}
+
+model Role {
+  id              BigInt           @id @default(autoincrement())
+  tenantId        BigInt?          @map("tenant_id")
+  name            String           @db.VarChar(50)
+  isSystem        Boolean          @map("is_system")
+  tenant          Tenant?          @relation("fk_13_role_tenant_id", fields: [tenantId], references: [id])
+  memberships     Membership[]     @relation("fk_12_membership_role_id")
+  rolePermissions RolePermission[] @relation("fk_14_role_permission_role_id")
+
+  @@index([tenantId])
+  @@map("role")
+}
+
+model Permission {
+  id              BigInt           @id @default(autoincrement())
+  code            String           @unique @db.VarChar(100)
+  description     String?          @db.Text
+  rolePermissions RolePermission[] @relation("fk_15_role_permission_permission_id")
+
+  @@map("permission")
+}
+
+model RolePermission {
+  roleId       BigInt     @map("role_id")
+  permissionId BigInt     @map("permission_id")
+  createdAt    DateTime   @default(now()) @db.Timestamptz(6) @map("created_at")
+  role         Role       @relation("fk_14_role_permission_role_id", fields: [roleId], references: [id])
+  permission   Permission @relation("fk_15_role_permission_permission_id", fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permission")
+}
+
+model ApprovalRequest {
+  id         BigInt     @id @default(autoincrement())
+  tenantId   BigInt     @map("tenant_id")
+  makerId    BigInt     @map("maker_id")
+  checkerId  BigInt?    @map("checker_id")
+  actionType String     @db.VarChar(50) @map("action_type")
+  payload    Json?
+  status     String     @db.VarChar(30)
+  reviewedAt DateTime?  @db.Timestamptz(6) @map("reviewed_at")
+  tenant     Tenant     @relation("fk_16_approval_request_tenant_id", fields: [tenantId], references: [id])
+  maker      StaffUser  @relation("fk_17_approval_request_maker_id", fields: [makerId], references: [id])
+  checker    StaffUser? @relation("fk_18_approval_request_checker_id", fields: [checkerId], references: [id])
+
+  @@index([tenantId])
+  @@index([makerId])
+  @@index([checkerId])
+  @@map("approval_request")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  tenantId   BigInt   @map("tenant_id")
+  actorType  String   @db.VarChar(50) @map("actor_type")
+  actorId    BigInt   @map("actor_id")
+  action     String   @db.VarChar(50)
+  entityType String   @db.VarChar(50) @map("entity_type")
+  entityId   BigInt   @map("entity_id")
+  diff       Json?
+  ipAddress  String?  @db.VarChar(45) @map("ip_address")
+  userAgent  String?  @db.Text @map("user_agent")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@map("audit_log")
+}
+
+// ================================================================
+// Cluster B: Customers and Integration
+// ================================================================
+
+model CustomerIdentity {
+  id               BigInt            @id @default(autoincrement())
+  phone            String?           @unique @db.VarChar(30)
+  email            String?           @unique @db.VarChar(100)
+  fullName         String            @db.VarChar(100) @map("full_name")
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  customerProfiles CustomerProfile[] @relation("fk_20_customer_profile_identity_id")
+  customerSessions CustomerSession[] @relation("fk_25_customer_session_identity_id")
+
+  @@map("customer_identity")
+}
+
+model CustomerProfile {
+  id               BigInt            @id @default(autoincrement())
+  tenantId         BigInt            @map("tenant_id")
+  identityId       BigInt            @map("identity_id")
+  displayName      String            @db.VarChar(100) @map("display_name")
+  consentMarketing Boolean           @map("consent_marketing")
+  consentDataShare Boolean           @map("consent_data_share")
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(6) @map("updated_at")
+  tenant           Tenant            @relation("fk_19_customer_profile_tenant_id", fields: [tenantId], references: [id])
+  identity         CustomerIdentity  @relation("fk_20_customer_profile_identity_id", fields: [identityId], references: [id])
+  savedTravelers   SavedTraveler[]   @relation("fk_22_saved_traveler_profile_id")
+  holds            Hold[]            @relation("fk_90_hold_profile_id")
+  bookings         Booking[]         @relation("fk_107_booking_customer_profile_id")
+  promoRedemptions PromoRedemption[] @relation("fk_137_promo_redemption_profile_id")
+  walletAccounts   WalletAccount[]   @relation("fk_139_wallet_account_profile_id")
+  loyaltyAccount   LoyaltyAccount?   @relation("fk_141_loyalty_account_profile_id")
+
+  @@index([tenantId])
+  @@index([identityId])
+  @@unique([tenantId, identityId])
+  @@map("customer_profile")
+}
+
+model SavedTraveler {
+  id                     BigInt                  @id @default(autoincrement())
+  tenantId               BigInt                  @map("tenant_id")
+  profileId              BigInt                  @map("profile_id")
+  name                   String                  @db.VarChar(100)
+  gender                 String                  @db.VarChar(20)
+  dateOfBirth            DateTime?               @db.Date @map("date_of_birth")
+  nationality            String                  @db.VarChar(50)
+  travelerType           String                  @db.VarChar(30) @map("traveler_type")
+  tenant                 Tenant                  @relation("fk_21_saved_traveler_tenant_id", fields: [tenantId], references: [id])
+  profile                CustomerProfile         @relation("fk_22_saved_traveler_profile_id", fields: [profileId], references: [id])
+  savedTravelerDocuments SavedTravelerDocument[] @relation("fk_24_saved_traveler_document_saved_traveler_id")
+
+  @@index([tenantId])
+  @@index([profileId])
+  @@map("saved_traveler")
+}
+
+model SavedTravelerDocument {
+  id                      BigInt        @id @default(autoincrement())
+  tenantId                BigInt        @map("tenant_id")
+  savedTravelerId         BigInt        @map("saved_traveler_id")
+  docTypeCode             String        @db.VarChar(50) @map("doc_type_code")
+  documentNumberEncrypted String?       @db.Text @map("document_number_encrypted")
+  expiryDate              DateTime?     @db.Date @map("expiry_date")
+  countryCode             String        @db.VarChar(10) @map("country_code")
+  tenant                  Tenant        @relation("fk_23_saved_traveler_document_tenant_id", fields: [tenantId], references: [id])
+  savedTraveler           SavedTraveler @relation("fk_24_saved_traveler_document_saved_traveler_id", fields: [savedTravelerId], references: [id])
+
+  @@index([tenantId])
+  @@index([savedTravelerId])
+  @@map("saved_traveler_document")
+}
+
+model CustomerSession {
+  id         BigInt           @id @default(autoincrement())
+  identityId BigInt           @map("identity_id")
+  tenantId   BigInt           @map("tenant_id")
+  tokenHash  String           @db.VarChar(255) @map("token_hash")
+  expiresAt  DateTime?        @db.Timestamptz(6) @map("expires_at")
+  identity   CustomerIdentity @relation("fk_25_customer_session_identity_id", fields: [identityId], references: [id])
+  tenant     Tenant           @relation("fk_26_customer_session_tenant_id", fields: [tenantId], references: [id])
+
+  @@index([identityId])
+  @@index([tenantId])
+  @@map("customer_session")
+}
+
+model SalesDomain {
+  id         BigInt  @id @default(autoincrement())
+  tenantId   BigInt  @map("tenant_id")
+  domainName String  @db.VarChar(255) @map("domain_name")
+  isPrimary  Boolean @map("is_primary")
+  isVerified Boolean @map("is_verified")
+  tenant     Tenant  @relation("fk_27_sales_domain_tenant_id", fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("sales_domain")
+}
+
+model ApiKey {
+  id             BigInt   @id @default(autoincrement())
+  tenantId       BigInt   @map("tenant_id")
+  agentId        BigInt?  @map("agent_id")
+  keyType        String   @db.VarChar(30) @map("key_type")
+  publicKey      String   @db.VarChar(100) @map("public_key")
+  secretHash     String   @db.VarChar(255) @map("secret_hash")
+  allowedOrigins String[] @default([]) @db.Text @map("allowed_origins")
+  scopes         String[] @default([]) @db.Text
+  isActive       Boolean  @map("is_active")
+  createdAt      DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  tenant         Tenant   @relation("fk_28_api_key_tenant_id", fields: [tenantId], references: [id])
+  agent          Agent?   @relation("fk_29_api_key_agent_id", fields: [agentId], references: [id])
+
+  @@index([tenantId])
+  @@index([agentId])
+  @@map("api_key")
+}
+
+model WebhookEndpoint {
+  id         BigInt   @id @default(autoincrement())
+  tenantId   BigInt   @map("tenant_id")
+  url        String?  @db.Text
+  secret     String   @db.VarChar(255)
+  eventTypes String[] @default([]) @db.Text @map("event_types")
+  isActive   Boolean  @map("is_active")
+  tenant     Tenant   @relation("fk_30_webhook_endpoint_tenant_id", fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("webhook_endpoint")
+}
+
+model OutboxEvent {
+  id        BigInt   @id @default(autoincrement())
+  tenantId  BigInt   @map("tenant_id")
+  topic     String   @db.VarChar(100)
+  eventType String   @db.VarChar(100) @map("event_type")
+  payload   Json?
+  status    String   @db.VarChar(30)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  tenant    Tenant   @relation("fk_31_outbox_event_tenant_id", fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("outbox_event")
+}
+
+model IdempotencyKey {
+  tenantId       BigInt    @map("tenant_id")
+  key            String    @db.VarChar(100)
+  responseStatus Int       @map("response_status")
+  responseBody   Json?     @map("response_body")
+  expiresAt      DateTime? @db.Timestamptz(6) @map("expires_at")
+  tenant         Tenant    @relation("fk_32_idempotency_key_tenant_id", fields: [tenantId], references: [id])
+
+  @@id([tenantId, key])
+  @@map("idempotency_key")
+}
+
+// ================================================================
+// Cluster C: Registries and Rules
+// ================================================================
+
+model ProductType {
+  id                   BigInt                @id @default(autoincrement())
+  code                 String                @unique @db.VarChar(50)
+  name                 String                @db.VarChar(100)
+  inventoryModel       String                @db.VarChar(50) @map("inventory_model")
+  defaultWorkflowId    BigInt?               @map("default_workflow_id")
+  config               Json?
+  isActive             Boolean               @map("is_active")
+  defaultWorkflow      Workflow?             @relation("fk_33_product_type_default_workflow_id", fields: [defaultWorkflowId], references: [id])
+  tenantProductTypes   TenantProductType[]   @relation("fk_3_tenant_product_type_product_type_id")
+  lookupValues         LookupValue[]         @relation("fk_35_lookup_value_product_type_id")
+  attributeDefinitions AttributeDefinition[] @relation("fk_36_attribute_definition_product_type_id")
+  policyDefinitions    PolicyDefinition[]    @relation("fk_37_policy_definition_product_type_id")
+  workflows            Workflow[]            @relation("fk_38_workflow_product_type_id")
+  rules                Rule[]                @relation("fk_42_rule_product_type_id")
+  templates            Template[]            @relation("fk_44_template_product_type_id")
+  offerings            Offering[]            @relation("fk_47_offering_product_type_id")
+  layoutTemplates      LayoutTemplate[]      @relation("fk_50_layout_template_product_type_id")
+  resources            Resource[]            @relation("fk_55_resource_product_type_id")
+  serviceLines         ServiceLine[]         @relation("fk_61_service_line_product_type_id")
+  ancillaryProducts    AncillaryProduct[]    @relation("fk_71_ancillary_product_product_type_id")
+  trips                Trip[]                @relation("fk_75_trip_product_type_id")
+  supplierConnections  SupplierConnection[]  @relation("fk_147_supplier_connection_product_type_id")
+  crewRequirements     CrewRequirement[]     @relation("fk_163_crew_requirement_product_type_id")
+
+  @@index([defaultWorkflowId])
+  @@map("product_type")
+}
+
+model LookupType {
+  id           BigInt        @id @default(autoincrement())
+  code         String        @db.VarChar(50)
+  name         String        @db.VarChar(100)
+  lookupValues LookupValue[] @relation("fk_34_lookup_value_lookup_type_id")
+
+  @@map("lookup_type")
+}
+
+model LookupValue {
+  id            BigInt       @id @default(autoincrement())
+  lookupTypeId  BigInt       @map("lookup_type_id")
+  productTypeId BigInt?      @map("product_type_id")
+  code          String       @db.VarChar(50)
+  label         String       @db.VarChar(100)
+  sortOrder     Int          @map("sort_order")
+  isActive      Boolean      @map("is_active")
+  lookupType    LookupType   @relation("fk_34_lookup_value_lookup_type_id", fields: [lookupTypeId], references: [id])
+  productType   ProductType? @relation("fk_35_lookup_value_product_type_id", fields: [productTypeId], references: [id])
+
+  @@index([lookupTypeId])
+  @@index([productTypeId])
+  @@map("lookup_value")
+}
+
+model AttributeDefinition {
+  id            BigInt       @id @default(autoincrement())
+  productTypeId BigInt?      @map("product_type_id")
+  entityType    String       @db.VarChar(50) @map("entity_type")
+  key           String       @db.VarChar(100)
+  dataType      String       @db.VarChar(50) @map("data_type")
+  validation    Json?
+  isRequired    Boolean      @map("is_required")
+  isSearchable  Boolean      @map("is_searchable")
+  isEncrypted   Boolean      @map("is_encrypted")
+  visibility    String       @db.VarChar(30)
+  schemaVersion Int          @map("schema_version")
+  isActive      Boolean      @map("is_active")
+  productType   ProductType? @relation("fk_36_attribute_definition_product_type_id", fields: [productTypeId], references: [id])
+
+  @@index([productTypeId])
+  @@map("attribute_definition")
+}
+
+model PolicyDefinition {
+  id            BigInt       @id @default(autoincrement())
+  productTypeId BigInt?      @map("product_type_id")
+  key           String       @db.VarChar(100)
+  valueType     String       @db.VarChar(30) @map("value_type")
+  defaultValue  String?      @db.Text @map("default_value")
+  platformCap   String?      @db.Text @map("platform_cap")
+  allowedScopes String[]     @default([]) @db.Text @map("allowed_scopes")
+  productType   ProductType? @relation("fk_37_policy_definition_product_type_id", fields: [productTypeId], references: [id])
+
+  @@index([productTypeId])
+  @@map("policy_definition")
+}
+
+model Workflow {
+  id                  BigInt               @id @default(autoincrement())
+  productTypeId       BigInt?              @map("product_type_id")
+  code                String               @db.VarChar(50)
+  name                String               @db.VarChar(100)
+  productType         ProductType?         @relation("fk_38_workflow_product_type_id", fields: [productTypeId], references: [id])
+  productTypes        ProductType[]        @relation("fk_33_product_type_default_workflow_id")
+  workflowStatuses    WorkflowStatus[]     @relation("fk_39_workflow_status_workflow_id")
+  workflowTransitions WorkflowTransition[] @relation("fk_40_workflow_transition_workflow_id")
+
+  @@index([productTypeId])
+  @@map("workflow")
+}
+
+model WorkflowStatus {
+  workflowId BigInt   @map("workflow_id")
+  code       String   @db.VarChar(50)
+  label      String   @db.VarChar(100)
+  isTerminal Boolean  @map("is_terminal")
+  workflow   Workflow @relation("fk_39_workflow_status_workflow_id", fields: [workflowId], references: [id])
+
+  @@id([workflowId, code])
+  @@map("workflow_status")
+}
+
+model WorkflowTransition {
+  workflowId         BigInt   @map("workflow_id")
+  fromCode           String   @db.VarChar(50) @map("from_code")
+  toCode             String   @db.VarChar(50) @map("to_code")
+  triggerName        String   @db.VarChar(100) @map("trigger_name")
+  requiredPermission String   @db.VarChar(100) @map("required_permission")
+  workflow           Workflow @relation("fk_40_workflow_transition_workflow_id", fields: [workflowId], references: [id])
+
+  @@id([workflowId, fromCode, toCode])
+  @@map("workflow_transition")
+}
+
+model Rule {
+  id                BigInt             @id @default(autoincrement())
+  tenantId          BigInt?            @map("tenant_id")
+  productTypeId     BigInt?            @map("product_type_id")
+  ruleType          String             @db.VarChar(50) @map("rule_type")
+  scopeType         String             @db.VarChar(50) @map("scope_type")
+  scopeId           BigInt             @map("scope_id")
+  priority          Int
+  condition         Json?
+  action            Json?
+  validFrom         DateTime?          @db.Timestamptz(6) @map("valid_from")
+  validTo           DateTime?          @db.Timestamptz(6) @map("valid_to")
+  version           Int                @default(1)
+  isActive          Boolean            @map("is_active")
+  tenant            Tenant?            @relation("fk_41_rule_tenant_id", fields: [tenantId], references: [id])
+  productType       ProductType?       @relation("fk_42_rule_product_type_id", fields: [productTypeId], references: [id])
+  bookingPriceLines BookingPriceLine[] @relation("fk_124_booking_price_line_rule_id")
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@map("rule")
+}
+
+model Template {
+  id               BigInt            @id @default(autoincrement())
+  tenantId         BigInt?           @map("tenant_id")
+  productTypeId    BigInt?           @map("product_type_id")
+  templateType     String            @db.VarChar(50) @map("template_type")
+  eventCode        String            @db.VarChar(50) @map("event_code")
+  locale           String            @db.VarChar(10)
+  subject          String            @db.VarChar(255)
+  body             String?           @db.Text
+  isActive         Boolean           @map("is_active")
+  tenant           Tenant?           @relation("fk_43_template_tenant_id", fields: [tenantId], references: [id])
+  productType      ProductType?      @relation("fk_44_template_product_type_id", fields: [productTypeId], references: [id])
+  notificationLogs NotificationLog[] @relation("fk_145_notification_log_template_id")
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@map("template")
+}
+
+model Feature {
+  key         String  @id @db.VarChar(50)
+  description String? @db.Text
+
+  @@map("feature")
+}
+
+model Currency {
+  code   String @id @db.VarChar(3)
+  symbol String @db.VarChar(10)
+
+  @@map("currency")
+}
+
+model ExchangeRate {
+  id          BigInt    @id @default(autoincrement())
+  fromCode    String    @db.VarChar(3) @map("from_code")
+  toCode      String    @db.VarChar(3) @map("to_code")
+  rate        Decimal   @db.Decimal(12, 6)
+  effectiveAt DateTime? @db.Timestamptz(6) @map("effective_at")
+
+  @@map("exchange_rate")
+}
+
+// ================================================================
+// Cluster D: Catalog
+// ================================================================
+
+model Location {
+  id                BigInt        @id @default(autoincrement())
+  parentId          BigInt?       @map("parent_id")
+  code              String        @db.VarChar(50)
+  name              String        @db.VarChar(100)
+  locationType      String        @db.VarChar(50) @map("location_type")
+  latitude          Decimal       @db.Decimal(10, 7)
+  longitude         Decimal       @db.Decimal(10, 7)
+  timezone          String        @db.VarChar(50)
+  parent            Location?     @relation("fk_45_location_parent_id", fields: [parentId], references: [id])
+  locationsByParent Location[]    @relation("fk_45_location_parent_id")
+  serviceStops      ServiceStop[] @relation("fk_63_service_stop_location_id")
+  tripStops         TripStop[]    @relation("fk_79_trip_stop_location_id")
+
+  @@index([parentId])
+  @@map("location")
+}
+
+model Offering {
+  id               BigInt            @id @default(autoincrement())
+  tenantId         BigInt?           @map("tenant_id")
+  productTypeId    BigInt            @map("product_type_id")
+  code             String            @db.VarChar(50)
+  name             String            @db.VarChar(100)
+  selectionMode    String            @db.VarChar(30) @map("selection_mode")
+  isActive         Boolean           @map("is_active")
+  version          Int               @default(1)
+  tenant           Tenant?           @relation("fk_46_offering_tenant_id", fields: [tenantId], references: [id])
+  productType      ProductType       @relation("fk_47_offering_product_type_id", fields: [productTypeId], references: [id])
+  offeringFeatures OfferingFeature[] @relation("fk_48_offering_feature_offering_id")
+  layoutTemplates  LayoutTemplate[]  @relation("fk_51_layout_template_offering_id")
+  resources        Resource[]        @relation("fk_56_resource_offering_id")
+  fareRules        FareRule[]        @relation("fk_68_fare_rule_offering_id")
+  crewRequirements CrewRequirement[] @relation("fk_164_crew_requirement_offering_id")
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@map("offering")
+}
+
+model OfferingFeature {
+  offeringId  BigInt   @map("offering_id")
+  featureCode String   @db.VarChar(50) @map("feature_code")
+  offering    Offering @relation("fk_48_offering_feature_offering_id", fields: [offeringId], references: [id])
+
+  @@id([offeringId, featureCode])
+  @@map("offering_feature")
+}
+
+model LayoutTemplate {
+  id            BigInt         @id @default(autoincrement())
+  tenantId      BigInt         @map("tenant_id")
+  productTypeId BigInt         @map("product_type_id")
+  offeringId    BigInt         @map("offering_id")
+  name          String         @db.VarChar(100)
+  totalCapacity Int            @map("total_capacity")
+  status        String         @db.VarChar(30)
+  version       Int            @default(1)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6) @map("created_at")
+  tenant        Tenant         @relation("fk_49_layout_template_tenant_id", fields: [tenantId], references: [id])
+  productType   ProductType    @relation("fk_50_layout_template_product_type_id", fields: [productTypeId], references: [id])
+  offering      Offering       @relation("fk_51_layout_template_offering_id", fields: [offeringId], references: [id])
+  layoutCells   LayoutCell[]   @relation("fk_52_layout_cell_layout_id")
+  resourceParts ResourcePart[] @relation("fk_58_resource_part_layout_id")
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@index([offeringId])
+  @@map("layout_template")
+}
+
+model LayoutCell {
+  id                      BigInt         @id @default(autoincrement())
+  layoutId                BigInt         @map("layout_id")
+  parentCellId            BigInt?        @map("parent_cell_id")
+  partNo                  Int            @map("part_no")
+  rowIndex                Int            @map("row_index")
+  colIndex                Int            @map("col_index")
+  cellTypeCode            String         @db.VarChar(30) @map("cell_type_code")
+  unitTypeCode            String         @db.VarChar(30) @map("unit_type_code")
+  label                   String         @db.VarChar(30)
+  positionCode            String         @db.VarChar(30) @map("position_code")
+  level                   Int
+  groupId                 String         @db.VarChar(50) @map("group_id")
+  priceTier               String         @db.VarChar(30) @map("price_tier")
+  flags                   String[]       @default([]) @db.Text
+  sellMode                String         @db.VarChar(30) @map("sell_mode")
+  capacity                Int
+  attributes              Json?
+  layout                  LayoutTemplate @relation("fk_52_layout_cell_layout_id", fields: [layoutId], references: [id])
+  parentCell              LayoutCell?    @relation("fk_53_layout_cell_parent_cell_id", fields: [parentCellId], references: [id])
+  layoutCellsByParentCell LayoutCell[]   @relation("fk_53_layout_cell_parent_cell_id")
+
+  @@index([layoutId])
+  @@index([parentCellId])
+  @@map("layout_cell")
+}
+
+model Resource {
+  id                BigInt             @id @default(autoincrement())
+  tenantId          BigInt             @map("tenant_id")
+  productTypeId     BigInt             @map("product_type_id")
+  offeringId        BigInt             @map("offering_id")
+  identifier        String             @db.VarChar(100)
+  registrationNo    String             @db.VarChar(50) @map("registration_no")
+  status            String             @db.VarChar(30)
+  attributes        Json?
+  version           Int                @default(1)
+  tenant            Tenant             @relation("fk_54_resource_tenant_id", fields: [tenantId], references: [id])
+  productType       ProductType        @relation("fk_55_resource_product_type_id", fields: [productTypeId], references: [id])
+  offering          Offering           @relation("fk_56_resource_offering_id", fields: [offeringId], references: [id])
+  resourceParts     ResourcePart[]     @relation("fk_57_resource_part_resource_id")
+  resourceDocuments ResourceDocument[] @relation("fk_59_resource_document_resource_id")
+  schedules         Schedule[]         @relation("fk_66_schedule_resource_id")
+  trips             Trip[]             @relation("fk_77_trip_resource_id")
+  resourceCrews     ResourceCrew[]     @relation("fk_167_resource_crew_resource_id")
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@index([offeringId])
+  @@map("resource")
+}
+
+model ResourcePart {
+  resourceId  BigInt         @map("resource_id")
+  partNo      Int            @map("part_no")
+  layoutId    BigInt         @map("layout_id")
+  name        String         @db.VarChar(100)
+  description String?        @db.Text
+  resource    Resource       @relation("fk_57_resource_part_resource_id", fields: [resourceId], references: [id])
+  layout      LayoutTemplate @relation("fk_58_resource_part_layout_id", fields: [layoutId], references: [id])
+
+  @@id([resourceId, partNo])
+  @@index([layoutId])
+  @@map("resource_part")
+}
+
+model ResourceDocument {
+  id          BigInt    @id @default(autoincrement())
+  resourceId  BigInt    @map("resource_id")
+  docTypeCode String    @db.VarChar(50) @map("doc_type_code")
+  documentNo  String    @db.VarChar(100) @map("document_no")
+  expiryDate  DateTime? @db.Date @map("expiry_date")
+  resource    Resource  @relation("fk_59_resource_document_resource_id", fields: [resourceId], references: [id])
+
+  @@index([resourceId])
+  @@map("resource_document")
+}
+
+model ServiceLine {
+  id               BigInt            @id @default(autoincrement())
+  tenantId         BigInt            @map("tenant_id")
+  productTypeId    BigInt            @map("product_type_id")
+  code             String            @db.VarChar(50)
+  name             String            @db.VarChar(100)
+  status           String            @db.VarChar(30)
+  tenant           Tenant            @relation("fk_60_service_line_tenant_id", fields: [tenantId], references: [id])
+  productType      ProductType       @relation("fk_61_service_line_product_type_id", fields: [productTypeId], references: [id])
+  serviceStops     ServiceStop[]     @relation("fk_62_service_stop_service_line_id")
+  schedules        Schedule[]        @relation("fk_65_schedule_service_line_id")
+  fareRules        FareRule[]        @relation("fk_69_fare_rule_service_line_id")
+  trips            Trip[]            @relation("fk_76_trip_service_line_id")
+  crewRequirements CrewRequirement[] @relation("fk_165_crew_requirement_service_line_id")
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@map("service_line")
+}
+
+model ServiceStop {
+  serviceLineId BigInt      @map("service_line_id")
+  seq           Int
+  locationId    BigInt      @map("location_id")
+  offsetMinutes Int         @map("offset_minutes")
+  isPickupDrop  Boolean     @map("is_pickup_drop")
+  serviceLine   ServiceLine @relation("fk_62_service_stop_service_line_id", fields: [serviceLineId], references: [id])
+  location      Location    @relation("fk_63_service_stop_location_id", fields: [locationId], references: [id])
+
+  @@id([serviceLineId, seq])
+  @@index([locationId])
+  @@map("service_stop")
+}
+
+model Schedule {
+  id            BigInt      @id @default(autoincrement())
+  tenantId      BigInt      @map("tenant_id")
+  serviceLineId BigInt      @map("service_line_id")
+  resourceId    BigInt?     @map("resource_id")
+  daysOfWeek    Int[]       @default([]) @map("days_of_week")
+  departureTime DateTime?   @db.Time(6) @map("departure_time")
+  validFrom     DateTime?   @db.Date @map("valid_from")
+  validTo       DateTime?   @db.Date @map("valid_to")
+  tenant        Tenant      @relation("fk_64_schedule_tenant_id", fields: [tenantId], references: [id])
+  serviceLine   ServiceLine @relation("fk_65_schedule_service_line_id", fields: [serviceLineId], references: [id])
+  resource      Resource?   @relation("fk_66_schedule_resource_id", fields: [resourceId], references: [id])
+
+  @@index([tenantId])
+  @@index([serviceLineId])
+  @@index([resourceId])
+  @@map("schedule")
+}
+
+model FareRule {
+  id            BigInt       @id @default(autoincrement())
+  tenantId      BigInt       @map("tenant_id")
+  offeringId    BigInt       @map("offering_id")
+  serviceLineId BigInt?      @map("service_line_id")
+  componentType String       @db.VarChar(50) @map("component_type")
+  amount        BigInt
+  percent       Decimal      @db.Decimal(5, 2)
+  condition     Json?
+  priority      Int
+  currency      String       @db.VarChar(3)
+  validFrom     DateTime?    @db.Timestamptz(6) @map("valid_from")
+  validTo       DateTime?    @db.Timestamptz(6) @map("valid_to")
+  isActive      Boolean      @map("is_active")
+  version       Int          @default(1)
+  tenant        Tenant       @relation("fk_67_fare_rule_tenant_id", fields: [tenantId], references: [id])
+  offering      Offering     @relation("fk_68_fare_rule_offering_id", fields: [offeringId], references: [id])
+  serviceLine   ServiceLine? @relation("fk_69_fare_rule_service_line_id", fields: [serviceLineId], references: [id])
+
+  @@index([tenantId])
+  @@index([offeringId])
+  @@index([serviceLineId])
+  @@map("fare_rule")
+}
+
+model AncillaryProduct {
+  id              BigInt           @id @default(autoincrement())
+  tenantId        BigInt           @map("tenant_id")
+  productTypeId   BigInt           @map("product_type_id")
+  code            String           @db.VarChar(50)
+  name            String           @db.VarChar(100)
+  category        String           @db.VarChar(50)
+  isActive        Boolean          @map("is_active")
+  tenant          Tenant           @relation("fk_70_ancillary_product_tenant_id", fields: [tenantId], references: [id])
+  productType     ProductType      @relation("fk_71_ancillary_product_product_type_id", fields: [productTypeId], references: [id])
+  ancillaryOffers AncillaryOffer[] @relation("fk_73_ancillary_offer_ancillary_id")
+  bookingItems    BookingItem[]    @relation("fk_120_booking_item_ancillary_id")
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@map("ancillary_product")
+}
+
+model AncillaryOffer {
+  id          BigInt           @id @default(autoincrement())
+  tenantId    BigInt           @map("tenant_id")
+  ancillaryId BigInt           @map("ancillary_id")
+  scopeType   String           @db.VarChar(50) @map("scope_type")
+  scopeId     BigInt           @map("scope_id")
+  price       BigInt
+  currency    String           @db.VarChar(3)
+  stockLimit  Int              @map("stock_limit")
+  tenant      Tenant           @relation("fk_72_ancillary_offer_tenant_id", fields: [tenantId], references: [id])
+  ancillary   AncillaryProduct @relation("fk_73_ancillary_offer_ancillary_id", fields: [ancillaryId], references: [id])
+
+  @@index([tenantId])
+  @@index([ancillaryId])
+  @@map("ancillary_offer")
+}
+
+// ================================================================
+// Cluster E: Operations and Allocation
+// ================================================================
+
+model Trip {
+  id               BigInt            @id @default(autoincrement())
+  tenantId         BigInt            @map("tenant_id")
+  productTypeId    BigInt            @map("product_type_id")
+  serviceLineId    BigInt            @map("service_line_id")
+  resourceId       BigInt?           @map("resource_id")
+  tripCode         String            @db.VarChar(50) @map("trip_code")
+  departureDate    DateTime?         @db.Date @map("departure_date")
+  status           String            @db.VarChar(30)
+  supplyMode       String            @db.VarChar(30) @map("supply_mode")
+  layoutSnapshot   Json?             @map("layout_snapshot")
+  offeringSnapshot Json?             @map("offering_snapshot")
+  policyVersion    Int               @map("policy_version")
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  version          Int               @default(1)
+  tenant           Tenant            @relation("fk_74_trip_tenant_id", fields: [tenantId], references: [id])
+  productType      ProductType       @relation("fk_75_trip_product_type_id", fields: [productTypeId], references: [id])
+  serviceLine      ServiceLine       @relation("fk_76_trip_service_line_id", fields: [serviceLineId], references: [id])
+  resource         Resource?         @relation("fk_77_trip_resource_id", fields: [resourceId], references: [id])
+  tripStops        TripStop[]        @relation("fk_78_trip_stop_trip_id")
+  tripUnits        TripUnit[]        @relation("fk_81_trip_unit_trip_id")
+  holds            Hold[]            @relation("fk_89_hold_trip_id")
+  allocationEvents AllocationEvent[] @relation("fk_100_allocation_event_trip_id")
+  tripChanges      TripChange[]      @relation("fk_104_trip_change_trip_id")
+  bookingItems     BookingItem[]     @relation("fk_117_booking_item_trip_id")
+  tripCrews        TripCrew[]        @relation("fk_170_trip_crew_trip_id")
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@index([serviceLineId])
+  @@index([resourceId])
+  @@map("trip")
+}
+
+model TripStop {
+  tripId       BigInt    @map("trip_id")
+  seq          Int
+  locationId   BigInt    @map("location_id")
+  scheduledArr DateTime? @db.Timestamptz(6) @map("scheduled_arr")
+  scheduledDep DateTime? @db.Timestamptz(6) @map("scheduled_dep")
+  trip         Trip      @relation("fk_78_trip_stop_trip_id", fields: [tripId], references: [id])
+  location     Location  @relation("fk_79_trip_stop_location_id", fields: [locationId], references: [id])
+
+  @@id([tripId, seq])
+  @@index([locationId])
+  @@map("trip_stop")
+}
+
+model TripUnit {
+  id                    BigInt            @id @default(autoincrement())
+  tenantId              BigInt            @map("tenant_id")
+  tripId                BigInt            @map("trip_id")
+  branchId              BigInt?           @map("branch_id")
+  agentId               BigInt?           @map("agent_id")
+  parentUnitId          BigInt?           @map("parent_unit_id")
+  unitLabel             String            @db.VarChar(30) @map("unit_label")
+  cellTypeCode          String            @db.VarChar(30) @map("cell_type_code")
+  unitTypeCode          String            @db.VarChar(30) @map("unit_type_code")
+  status                String            @db.VarChar(30)
+  poolCode              String            @db.VarChar(50) @map("pool_code")
+  eligibilityLock       String            @db.VarChar(50) @map("eligibility_lock")
+  basePrice             BigInt            @map("base_price")
+  currentPrice          BigInt            @map("current_price")
+  currency              String            @db.VarChar(3)
+  capacity              Int
+  heldQty               Int               @default(0) @map("held_qty")
+  soldQty               Int               @default(0) @map("sold_qty")
+  attributes            Json?
+  version               Int               @default(1)
+  tenant                Tenant            @relation("fk_80_trip_unit_tenant_id", fields: [tenantId], references: [id])
+  trip                  Trip              @relation("fk_81_trip_unit_trip_id", fields: [tripId], references: [id])
+  branch                Branch?           @relation("fk_82_trip_unit_branch_id", fields: [branchId], references: [id])
+  agent                 Agent?            @relation("fk_83_trip_unit_agent_id", fields: [agentId], references: [id])
+  parentUnit            TripUnit?         @relation("fk_84_trip_unit_parent_unit_id", fields: [parentUnitId], references: [id])
+  tripUnitsByParentUnit TripUnit[]        @relation("fk_84_trip_unit_parent_unit_id")
+  unitSpans             UnitSpan[]        @relation("fk_85_unit_span_trip_unit_id")
+  holdItems             HoldItem[]        @relation("fk_95_hold_item_trip_unit_id")
+  allocationEvents      AllocationEvent[] @relation("fk_101_allocation_event_trip_unit_id")
+  bookingItems          BookingItem[]     @relation("fk_118_booking_item_trip_unit_id")
+
+  @@index([tenantId])
+  @@index([tripId])
+  @@index([branchId])
+  @@index([agentId])
+  @@index([parentUnitId])
+  @@map("trip_unit")
+}
+
+model UnitSpan {
+  id            BigInt       @id @default(autoincrement())
+  tripUnitId    BigInt       @map("trip_unit_id")
+  holdId        BigInt?      @map("hold_id")
+  bookingItemId BigInt?      @map("booking_item_id")
+  spanType      String       @db.VarChar(30) @map("span_type")
+  startStopSeq  Int          @map("start_stop_seq")
+  endStopSeq    Int          @map("end_stop_seq")
+  startTime     DateTime?    @db.Timestamptz(6) @map("start_time")
+  endTime       DateTime?    @db.Timestamptz(6) @map("end_time")
+  tripUnit      TripUnit     @relation("fk_85_unit_span_trip_unit_id", fields: [tripUnitId], references: [id])
+  hold          Hold?        @relation("fk_86_unit_span_hold_id", fields: [holdId], references: [id])
+  bookingItem   BookingItem? @relation("fk_87_unit_span_booking_item_id", fields: [bookingItemId], references: [id])
+
+  @@index([tripUnitId])
+  @@index([holdId])
+  @@index([bookingItemId])
+  @@map("unit_span")
+}
+
+model Hold {
+  id          BigInt           @id @default(autoincrement())
+  tenantId    BigInt           @map("tenant_id")
+  tripId      BigInt           @map("trip_id")
+  profileId   BigInt?          @map("profile_id")
+  staffUserId BigInt?          @map("staff_user_id")
+  branchId    BigInt?          @map("branch_id")
+  agentId     BigInt?          @map("agent_id")
+  status      String           @db.VarChar(30)
+  channelCode String           @db.VarChar(50) @map("channel_code")
+  expiresAt   DateTime?        @db.Timestamptz(6) @map("expires_at")
+  createdAt   DateTime         @default(now()) @db.Timestamptz(6) @map("created_at")
+  tenant      Tenant           @relation("fk_88_hold_tenant_id", fields: [tenantId], references: [id])
+  trip        Trip             @relation("fk_89_hold_trip_id", fields: [tripId], references: [id])
+  profile     CustomerProfile? @relation("fk_90_hold_profile_id", fields: [profileId], references: [id])
+  staffUser   StaffUser?       @relation("fk_91_hold_staff_user_id", fields: [staffUserId], references: [id])
+  branch      Branch?          @relation("fk_92_hold_branch_id", fields: [branchId], references: [id])
+  agent       Agent?           @relation("fk_93_hold_agent_id", fields: [agentId], references: [id])
+  unitSpans   UnitSpan[]       @relation("fk_86_unit_span_hold_id")
+  holdItems   HoldItem[]       @relation("fk_94_hold_item_hold_id")
+
+  @@index([tenantId])
+  @@index([tripId])
+  @@index([profileId])
+  @@index([staffUserId])
+  @@index([branchId])
+  @@index([agentId])
+  @@map("hold")
+}
+
+model HoldItem {
+  holdId      BigInt   @map("hold_id")
+  tripUnitId  BigInt   @map("trip_unit_id")
+  lockedPrice BigInt   @map("locked_price")
+  currency    String   @db.VarChar(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  hold        Hold     @relation("fk_94_hold_item_hold_id", fields: [holdId], references: [id])
+  tripUnit    TripUnit @relation("fk_95_hold_item_trip_unit_id", fields: [tripUnitId], references: [id])
+
+  @@id([holdId, tripUnitId])
+  @@index([tripUnitId])
+  @@map("hold_item")
+}
+
+model AllocationRule {
+  id             BigInt    @id @default(autoincrement())
+  tenantId       BigInt    @map("tenant_id")
+  branchId       BigInt?   @map("branch_id")
+  agentId        BigInt?   @map("agent_id")
+  scopeType      String    @db.VarChar(50) @map("scope_type")
+  scopeId        BigInt    @map("scope_id")
+  poolCode       String    @db.VarChar(50) @map("pool_code")
+  allocationMode String    @db.VarChar(30) @map("allocation_mode")
+  quotaUnits     String[]  @default([]) @db.Text @map("quota_units")
+  quotaCount     Int       @map("quota_count")
+  releaseAt      DateTime? @db.Timestamptz(6) @map("release_at")
+  releaseToPool  String    @db.VarChar(50) @map("release_to_pool")
+  tenant         Tenant    @relation("fk_96_allocation_rule_tenant_id", fields: [tenantId], references: [id])
+  branch         Branch?   @relation("fk_97_allocation_rule_branch_id", fields: [branchId], references: [id])
+  agent          Agent?    @relation("fk_98_allocation_rule_agent_id", fields: [agentId], references: [id])
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@index([agentId])
+  @@map("allocation_rule")
+}
+
+model AllocationEvent {
+  id         BigInt     @id @default(autoincrement())
+  tenantId   BigInt     @map("tenant_id")
+  tripId     BigInt     @map("trip_id")
+  tripUnitId BigInt     @map("trip_unit_id")
+  actorId    BigInt?    @map("actor_id")
+  fromPool   String     @db.VarChar(50) @map("from_pool")
+  toPool     String     @db.VarChar(50) @map("to_pool")
+  reason     String?    @db.Text
+  createdAt  DateTime   @default(now()) @db.Timestamptz(6) @map("created_at")
+  tenant     Tenant     @relation("fk_99_allocation_event_tenant_id", fields: [tenantId], references: [id])
+  trip       Trip       @relation("fk_100_allocation_event_trip_id", fields: [tripId], references: [id])
+  tripUnit   TripUnit   @relation("fk_101_allocation_event_trip_unit_id", fields: [tripUnitId], references: [id])
+  actor      StaffUser? @relation("fk_102_allocation_event_actor_id", fields: [actorId], references: [id])
+
+  @@index([tenantId])
+  @@index([tripId])
+  @@index([tripUnitId])
+  @@index([actorId])
+  @@map("allocation_event")
+}
+
+model TripChange {
+  id         BigInt     @id @default(autoincrement())
+  tenantId   BigInt     @map("tenant_id")
+  tripId     BigInt     @map("trip_id")
+  actorId    BigInt?    @map("actor_id")
+  changeType String     @db.VarChar(50) @map("change_type")
+  oldValue   String?    @db.Text @map("old_value")
+  newValue   String?    @db.Text @map("new_value")
+  createdAt  DateTime   @default(now()) @db.Timestamptz(6) @map("created_at")
+  tenant     Tenant     @relation("fk_103_trip_change_tenant_id", fields: [tenantId], references: [id])
+  trip       Trip       @relation("fk_104_trip_change_trip_id", fields: [tripId], references: [id])
+  actor      StaffUser? @relation("fk_105_trip_change_actor_id", fields: [actorId], references: [id])
+
+  @@index([tenantId])
+  @@index([tripId])
+  @@index([actorId])
+  @@map("trip_change")
+}
+
+// ================================================================
+// Cluster F: Booking and Money
+// ================================================================
+
+model Booking {
+  id                BigInt             @id @default(autoincrement())
+  tenantId          BigInt             @map("tenant_id")
+  customerProfileId BigInt?            @map("customer_profile_id")
+  branchId          BigInt?            @map("branch_id")
+  agentId           BigInt?            @map("agent_id")
+  soldBy            BigInt?            @map("sold_by")
+  bookingRef        String             @unique @db.VarChar(50) @map("booking_ref")
+  salesChannel      String             @db.VarChar(50) @map("sales_channel")
+  status            String             @db.VarChar(30)
+  totalAmount       BigInt             @map("total_amount")
+  currency          String             @db.VarChar(3)
+  exchangeRate      Decimal            @db.Decimal(12, 6) @map("exchange_rate")
+  policyVersion     Int                @map("policy_version")
+  ruleVersions      Json?              @map("rule_versions")
+  notes             String?            @db.Text
+  createdAt         DateTime           @default(now()) @db.Timestamptz(6) @map("created_at")
+  tenant            Tenant             @relation("fk_106_booking_tenant_id", fields: [tenantId], references: [id])
+  customerProfile   CustomerProfile?   @relation("fk_107_booking_customer_profile_id", fields: [customerProfileId], references: [id])
+  branch            Branch?            @relation("fk_108_booking_branch_id", fields: [branchId], references: [id])
+  agent             Agent?             @relation("fk_109_booking_agent_id", fields: [agentId], references: [id])
+  soldByStaffUser   StaffUser?         @relation("fk_110_booking_sold_by", fields: [soldBy], references: [id])
+  travelers         Traveler[]         @relation("fk_112_traveler_booking_id")
+  bookingItems      BookingItem[]      @relation("fk_116_booking_item_booking_id")
+  bookingPriceLines BookingPriceLine[] @relation("fk_122_booking_price_line_booking_id")
+  payments          Payment[]          @relation("fk_128_payment_booking_id")
+  refunds           Refund[]           @relation("fk_130_refund_booking_id")
+  promoRedemptions  PromoRedemption[]  @relation("fk_136_promo_redemption_booking_id")
+
+  @@index([tenantId])
+  @@index([customerProfileId])
+  @@index([branchId])
+  @@index([agentId])
+  @@index([soldBy])
+  @@map("booking")
+}
+
+model Traveler {
+  id                BigInt             @id @default(autoincrement())
+  tenantId          BigInt             @map("tenant_id")
+  bookingId         BigInt             @map("booking_id")
+  type              String             @db.VarChar(30)
+  name              String             @db.VarChar(100)
+  gender            String             @db.VarChar(20)
+  dateOfBirth       DateTime?          @db.Date @map("date_of_birth")
+  nationality       String             @db.VarChar(50)
+  seatLabel         String             @db.VarChar(30) @map("seat_label")
+  tenant            Tenant             @relation("fk_111_traveler_tenant_id", fields: [tenantId], references: [id])
+  booking           Booking            @relation("fk_112_traveler_booking_id", fields: [bookingId], references: [id])
+  travelerDocuments TravelerDocument[] @relation("fk_114_traveler_document_traveler_id")
+  bookingItems      BookingItem[]      @relation("fk_119_booking_item_traveler_id")
+
+  @@index([tenantId])
+  @@index([bookingId])
+  @@map("traveler")
+}
+
+model TravelerDocument {
+  id              BigInt    @id @default(autoincrement())
+  tenantId        BigInt    @map("tenant_id")
+  travelerId      BigInt    @map("traveler_id")
+  docType         String    @db.VarChar(50) @map("doc_type")
+  numberEncrypted String?   @db.Text @map("number_encrypted")
+  expiryDate      DateTime? @db.Date @map("expiry_date")
+  country         String    @db.VarChar(10)
+  tenant          Tenant    @relation("fk_113_traveler_document_tenant_id", fields: [tenantId], references: [id])
+  traveler        Traveler  @relation("fk_114_traveler_document_traveler_id", fields: [travelerId], references: [id])
+
+  @@index([tenantId])
+  @@index([travelerId])
+  @@map("traveler_document")
+}
+
+model BookingItem {
+  id                  BigInt               @id @default(autoincrement())
+  tenantId            BigInt               @map("tenant_id")
+  bookingId           BigInt               @map("booking_id")
+  tripId              BigInt?              @map("trip_id")
+  tripUnitId          BigInt?              @map("trip_unit_id")
+  travelerId          BigInt?              @map("traveler_id")
+  ancillaryId         BigInt?              @map("ancillary_id")
+  itemType            String               @db.VarChar(30) @map("item_type")
+  legNo               Int                  @map("leg_no")
+  unitPrice           BigInt               @map("unit_price")
+  quantity            Int
+  totalAmount         BigInt               @map("total_amount")
+  status              String               @db.VarChar(30)
+  tenant              Tenant               @relation("fk_115_booking_item_tenant_id", fields: [tenantId], references: [id])
+  booking             Booking              @relation("fk_116_booking_item_booking_id", fields: [bookingId], references: [id])
+  trip                Trip?                @relation("fk_117_booking_item_trip_id", fields: [tripId], references: [id])
+  tripUnit            TripUnit?            @relation("fk_118_booking_item_trip_unit_id", fields: [tripUnitId], references: [id])
+  traveler            Traveler?            @relation("fk_119_booking_item_traveler_id", fields: [travelerId], references: [id])
+  ancillary           AncillaryProduct?    @relation("fk_120_booking_item_ancillary_id", fields: [ancillaryId], references: [id])
+  unitSpans           UnitSpan[]           @relation("fk_87_unit_span_booking_item_id")
+  bookingPriceLines   BookingPriceLine[]   @relation("fk_123_booking_price_line_booking_item_id")
+  tickets             Ticket[]             @relation("fk_126_ticket_booking_item_id")
+  supplierBookingRefs SupplierBookingRef[] @relation("fk_150_supplier_booking_ref_booking_item_id")
+
+  @@index([tenantId])
+  @@index([bookingId])
+  @@index([tripId])
+  @@index([tripUnitId])
+  @@index([travelerId])
+  @@index([ancillaryId])
+  @@map("booking_item")
+}
+
+model BookingPriceLine {
+  id            BigInt       @id @default(autoincrement())
+  tenantId      BigInt       @map("tenant_id")
+  bookingId     BigInt       @map("booking_id")
+  bookingItemId BigInt?      @map("booking_item_id")
+  ruleId        BigInt?      @map("rule_id")
+  componentType String       @db.VarChar(50) @map("component_type")
+  rate          Decimal      @db.Decimal(8, 4)
+  baseAmount    BigInt       @map("base_amount")
+  taxAmount     BigInt       @map("tax_amount")
+  totalAmount   BigInt       @map("total_amount")
+  tenant        Tenant       @relation("fk_121_booking_price_line_tenant_id", fields: [tenantId], references: [id])
+  booking       Booking      @relation("fk_122_booking_price_line_booking_id", fields: [bookingId], references: [id])
+  bookingItem   BookingItem? @relation("fk_123_booking_price_line_booking_item_id", fields: [bookingItemId], references: [id])
+  rule          Rule?        @relation("fk_124_booking_price_line_rule_id", fields: [ruleId], references: [id])
+
+  @@index([tenantId])
+  @@index([bookingId])
+  @@index([bookingItemId])
+  @@index([ruleId])
+  @@map("booking_price_line")
+}
+
+model Ticket {
+  id            BigInt      @id @default(autoincrement())
+  tenantId      BigInt      @map("tenant_id")
+  bookingItemId BigInt      @map("booking_item_id")
+  ticketNo      String      @unique @db.VarChar(50) @map("ticket_no")
+  qrCodePayload String?     @db.Text @map("qr_code_payload")
+  qrSignature   String?     @db.Text @map("qr_signature")
+  status        String      @db.VarChar(30)
+  issuedAt      DateTime?   @db.Timestamptz(6) @map("issued_at")
+  tenant        Tenant      @relation("fk_125_ticket_tenant_id", fields: [tenantId], references: [id])
+  bookingItem   BookingItem @relation("fk_126_ticket_booking_item_id", fields: [bookingItemId], references: [id])
+
+  @@index([tenantId])
+  @@index([bookingItemId])
+  @@map("ticket")
+}
+
+model Payment {
+  id              BigInt   @id @default(autoincrement())
+  tenantId        BigInt   @map("tenant_id")
+  bookingId       BigInt   @map("booking_id")
+  paymentMethod   String   @db.VarChar(50) @map("payment_method")
+  gatewayProvider String   @db.VarChar(50) @map("gateway_provider")
+  gatewayTxnId    String   @db.VarChar(100) @map("gateway_txn_id")
+  amount          BigInt
+  currency        String   @db.VarChar(3)
+  status          String   @db.VarChar(30)
+  idempotencyKey  String   @db.VarChar(100) @map("idempotency_key")
+  tenant          Tenant   @relation("fk_127_payment_tenant_id", fields: [tenantId], references: [id])
+  booking         Booking  @relation("fk_128_payment_booking_id", fields: [bookingId], references: [id])
+  refunds         Refund[] @relation("fk_131_refund_payment_id")
+
+  @@index([tenantId])
+  @@index([bookingId])
+  @@map("payment")
+}
+
+model Refund {
+  id                  BigInt     @id @default(autoincrement())
+  tenantId            BigInt     @map("tenant_id")
+  bookingId           BigInt     @map("booking_id")
+  paymentId           BigInt     @map("payment_id")
+  approvedBy          BigInt?    @map("approved_by")
+  amount              BigInt
+  reason              String?    @db.Text
+  status              String     @db.VarChar(30)
+  tenant              Tenant     @relation("fk_129_refund_tenant_id", fields: [tenantId], references: [id])
+  booking             Booking    @relation("fk_130_refund_booking_id", fields: [bookingId], references: [id])
+  payment             Payment    @relation("fk_131_refund_payment_id", fields: [paymentId], references: [id])
+  approvedByStaffUser StaffUser? @relation("fk_132_refund_approved_by", fields: [approvedBy], references: [id])
+
+  @@index([tenantId])
+  @@index([bookingId])
+  @@index([paymentId])
+  @@index([approvedBy])
+  @@map("refund")
+}
+
+model Promo {
+  id               BigInt            @id @default(autoincrement())
+  tenantId         BigInt            @map("tenant_id")
+  code             String            @db.VarChar(50)
+  discountType     String            @db.VarChar(30) @map("discount_type")
+  discountValue    Decimal           @db.Decimal(10, 2) @map("discount_value")
+  minCartAmount    BigInt            @map("min_cart_amount")
+  maxDiscount      BigInt            @map("max_discount")
+  startAt          DateTime?         @db.Timestamptz(6) @map("start_at")
+  endAt            DateTime?         @db.Timestamptz(6) @map("end_at")
+  tenant           Tenant            @relation("fk_133_promo_tenant_id", fields: [tenantId], references: [id])
+  promoRedemptions PromoRedemption[] @relation("fk_135_promo_redemption_promo_id")
+
+  @@index([tenantId])
+  @@map("promo")
+}
+
+model PromoRedemption {
+  id              BigInt          @id @default(autoincrement())
+  tenantId        BigInt          @map("tenant_id")
+  promoId         BigInt          @map("promo_id")
+  bookingId       BigInt          @map("booking_id")
+  profileId       BigInt          @map("profile_id")
+  discountApplied BigInt          @map("discount_applied")
+  tenant          Tenant          @relation("fk_134_promo_redemption_tenant_id", fields: [tenantId], references: [id])
+  promo           Promo           @relation("fk_135_promo_redemption_promo_id", fields: [promoId], references: [id])
+  booking         Booking         @relation("fk_136_promo_redemption_booking_id", fields: [bookingId], references: [id])
+  profile         CustomerProfile @relation("fk_137_promo_redemption_profile_id", fields: [profileId], references: [id])
+
+  @@index([tenantId])
+  @@index([promoId])
+  @@index([bookingId])
+  @@index([profileId])
+  @@map("promo_redemption")
+}
+
+model WalletAccount {
+  id        BigInt          @id @default(autoincrement())
+  tenantId  BigInt          @map("tenant_id")
+  profileId BigInt          @map("profile_id")
+  balance   BigInt
+  tenant    Tenant          @relation("fk_138_wallet_account_tenant_id", fields: [tenantId], references: [id])
+  profile   CustomerProfile @relation("fk_139_wallet_account_profile_id", fields: [profileId], references: [id])
+
+  @@index([tenantId])
+  @@index([profileId])
+  @@map("wallet_account")
+}
+
+model LoyaltyAccount {
+  id        BigInt          @id @default(autoincrement())
+  tenantId  BigInt          @map("tenant_id")
+  profileId BigInt          @unique @map("profile_id")
+  tenant    Tenant          @relation("fk_140_loyalty_account_tenant_id", fields: [tenantId], references: [id])
+  profile   CustomerProfile @relation("fk_141_loyalty_account_profile_id", fields: [profileId], references: [id])
+
+  @@index([tenantId])
+  @@map("loyalty_account")
+}
+
+model LedgerEntry {
+  id           BigInt   @id @default(autoincrement())
+  tenantId     BigInt   @map("tenant_id")
+  accountCode  String   @db.VarChar(50) @map("account_code")
+  debitAmount  BigInt   @map("debit_amount")
+  creditAmount BigInt   @map("credit_amount")
+  currency     String   @db.VarChar(3)
+  refType      String   @db.VarChar(50) @map("ref_type")
+  refId        BigInt   @map("ref_id")
+  postedAt     DateTime @default(now()) @db.Timestamptz(6) @map("posted_at")
+  tenant       Tenant   @relation("fk_142_ledger_entry_tenant_id", fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("ledger_entry")
+}
+
+model Settlement {
+  id               BigInt    @id @default(autoincrement())
+  tenantId         BigInt    @map("tenant_id")
+  cycleStart       DateTime? @db.Date @map("cycle_start")
+  cycleEnd         DateTime? @db.Date @map("cycle_end")
+  grossSales       BigInt    @map("gross_sales")
+  commissionFee    BigInt    @map("commission_fee")
+  refundDeductions BigInt    @map("refund_deductions")
+  payoutAmount     BigInt    @map("payout_amount")
+  status           String    @db.VarChar(30)
+  tenant           Tenant    @relation("fk_143_settlement_tenant_id", fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("settlement")
+}
+
+model NotificationLog {
+  id         BigInt    @id @default(autoincrement())
+  tenantId   BigInt    @map("tenant_id")
+  templateId BigInt    @map("template_id")
+  channel    String    @db.VarChar(30)
+  recipient  String    @db.VarChar(100)
+  subject    String    @db.VarChar(255)
+  status     String    @db.VarChar(30)
+  sentAt     DateTime? @db.Timestamptz(6) @map("sent_at")
+  metadata   Json?
+  tenant     Tenant    @relation("fk_144_notification_log_tenant_id", fields: [tenantId], references: [id])
+  template   Template  @relation("fk_145_notification_log_template_id", fields: [templateId], references: [id])
+
+  @@index([tenantId])
+  @@index([templateId])
+  @@map("notification_log")
+}
+
+// ================================================================
+// Cluster G: Supplier Integration
+// ================================================================
+
+model SupplierConnection {
+  id                  BigInt               @id @default(autoincrement())
+  tenantId            BigInt               @map("tenant_id")
+  productTypeId       BigInt               @map("product_type_id")
+  supplierName        String               @db.VarChar(100) @map("supplier_name")
+  supplyMode          String               @db.VarChar(30) @map("supply_mode")
+  apiEndpoint         String?              @db.Text @map("api_endpoint")
+  authType            String               @db.VarChar(50) @map("auth_type")
+  status              String               @db.VarChar(30)
+  config              Json?
+  createdAt           DateTime             @default(now()) @db.Timestamptz(6) @map("created_at")
+  version             Int                  @default(1)
+  tenant              Tenant               @relation("fk_146_supplier_connection_tenant_id", fields: [tenantId], references: [id])
+  productType         ProductType          @relation("fk_147_supplier_connection_product_type_id", fields: [productTypeId], references: [id])
+  externalMappings    ExternalMapping[]    @relation("fk_149_external_mapping_connection_id")
+  supplierBookingRefs SupplierBookingRef[] @relation("fk_151_supplier_booking_ref_connection_id")
+  integrationLogs     IntegrationLog[]     @relation("fk_153_integration_log_connection_id")
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@map("supplier_connection")
+}
+
+model ExternalMapping {
+  id           BigInt             @id @default(autoincrement())
+  tenantId     BigInt             @map("tenant_id")
+  connectionId BigInt             @map("connection_id")
+  entityType   String             @db.VarChar(50) @map("entity_type")
+  internalId   BigInt             @map("internal_id")
+  externalCode String             @db.VarChar(100) @map("external_code")
+  metadata     Json?
+  tenant       Tenant             @relation("fk_148_external_mapping_tenant_id", fields: [tenantId], references: [id])
+  connection   SupplierConnection @relation("fk_149_external_mapping_connection_id", fields: [connectionId], references: [id])
+
+  @@index([tenantId])
+  @@index([connectionId])
+  @@map("external_mapping")
+}
+
+model SupplierBookingRef {
+  tenantId      BigInt             @map("tenant_id")
+  bookingItemId BigInt             @map("booking_item_id")
+  connectionId  BigInt             @map("connection_id")
+  supplierPnr   String             @db.VarChar(100) @map("supplier_pnr")
+  bookingItem   BookingItem        @relation("fk_150_supplier_booking_ref_booking_item_id", fields: [bookingItemId], references: [id])
+  connection    SupplierConnection @relation("fk_151_supplier_booking_ref_connection_id", fields: [connectionId], references: [id])
+
+  @@id([bookingItemId, connectionId])
+  @@index([connectionId])
+  @@map("supplier_booking_ref")
+}
+
+model IntegrationLog {
+  id              BigInt             @id @default(autoincrement())
+  tenantId        BigInt             @map("tenant_id")
+  connectionId    BigInt             @map("connection_id")
+  direction       String             @db.VarChar(20)
+  endpoint        String?            @db.Text
+  statusCode      Int                @map("status_code")
+  latencyMs       Int                @map("latency_ms")
+  requestPayload  Json?              @map("request_payload")
+  responsePayload Json?              @map("response_payload")
+  tenant          Tenant             @relation("fk_152_integration_log_tenant_id", fields: [tenantId], references: [id])
+  connection      SupplierConnection @relation("fk_153_integration_log_connection_id", fields: [connectionId], references: [id])
+
+  @@index([tenantId])
+  @@index([connectionId])
+  @@map("integration_log")
+}
+
+// ================================================================
+// Cluster H: Crew Management
+// ================================================================
+
+model CrewMember {
+  id               BigInt           @id @default(autoincrement())
+  tenantId         BigInt           @map("tenant_id")
+  staffUserId      BigInt?          @unique @map("staff_user_id")
+  branchId         BigInt?          @map("branch_id")
+  firstName        String           @db.VarChar(50) @map("first_name")
+  lastName         String           @db.VarChar(50) @map("last_name")
+  phone            String?          @db.VarChar(30)
+  emergencyContact String           @db.VarChar(50) @map("emergency_contact")
+  employmentType   String           @db.VarChar(30) @map("employment_type")
+  status           String           @db.VarChar(30)
+  hireDate         DateTime?        @db.Date @map("hire_date")
+  address          String?          @db.Text
+  attributes       Json?
+  tenant           Tenant           @relation("fk_154_crew_member_tenant_id", fields: [tenantId], references: [id])
+  staffUser        StaffUser?       @relation("fk_155_crew_member_staff_user_id", fields: [staffUserId], references: [id])
+  branch           Branch?          @relation("fk_156_crew_member_branch_id", fields: [branchId], references: [id])
+  crewMemberRoles  CrewMemberRole[] @relation("fk_157_crew_member_role_crew_member_id")
+  crewDocuments    CrewDocument[]   @relation("fk_159_crew_document_crew_member_id")
+  crewLeaves       CrewLeave[]      @relation("fk_161_crew_leave_crew_member_id")
+  resourceCrews    ResourceCrew[]   @relation("fk_168_resource_crew_crew_member_id")
+  tripCrews        TripCrew[]       @relation("fk_171_trip_crew_crew_member_id")
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@map("crew_member")
+}
+
+model CrewMemberRole {
+  crewMemberId BigInt     @map("crew_member_id")
+  crewRoleCode String     @db.VarChar(50) @map("crew_role_code")
+  isPrimary    Boolean    @map("is_primary")
+  notes        String?    @db.Text
+  crewMember   CrewMember @relation("fk_157_crew_member_role_crew_member_id", fields: [crewMemberId], references: [id])
+
+  @@id([crewMemberId, crewRoleCode])
+  @@map("crew_member_role")
+}
+
+model CrewDocument {
+  id                   BigInt     @id @default(autoincrement())
+  tenantId             BigInt     @map("tenant_id")
+  crewMemberId         BigInt     @map("crew_member_id")
+  docType              String     @db.VarChar(50) @map("doc_type")
+  numberEncrypted      String?    @db.Text @map("number_encrypted")
+  issueDate            DateTime?  @db.Date @map("issue_date")
+  expiryDate           DateTime?  @db.Date @map("expiry_date")
+  issuingAuthority     String     @db.VarChar(100) @map("issuing_authority")
+  isVerified           Boolean    @map("is_verified")
+  verificationMetadata Json?      @map("verification_metadata")
+  tenant               Tenant     @relation("fk_158_crew_document_tenant_id", fields: [tenantId], references: [id])
+  crewMember           CrewMember @relation("fk_159_crew_document_crew_member_id", fields: [crewMemberId], references: [id])
+
+  @@index([tenantId])
+  @@index([crewMemberId])
+  @@map("crew_document")
+}
+
+model CrewLeave {
+  id           BigInt     @id @default(autoincrement())
+  tenantId     BigInt     @map("tenant_id")
+  crewMemberId BigInt     @map("crew_member_id")
+  leaveType    String     @db.VarChar(50) @map("leave_type")
+  startDate    DateTime?  @db.Date @map("start_date")
+  endDate      DateTime?  @db.Date @map("end_date")
+  status       String     @db.VarChar(30)
+  tenant       Tenant     @relation("fk_160_crew_leave_tenant_id", fields: [tenantId], references: [id])
+  crewMember   CrewMember @relation("fk_161_crew_leave_crew_member_id", fields: [crewMemberId], references: [id])
+
+  @@index([tenantId])
+  @@index([crewMemberId])
+  @@map("crew_leave")
+}
+
+model CrewRequirement {
+  id            BigInt       @id @default(autoincrement())
+  tenantId      BigInt       @map("tenant_id")
+  productTypeId BigInt       @map("product_type_id")
+  offeringId    BigInt?      @map("offering_id")
+  serviceLineId BigInt?      @map("service_line_id")
+  crewRoleCode  String       @db.VarChar(50) @map("crew_role_code")
+  minCount      Int          @map("min_count")
+  maxCount      Int          @map("max_count")
+  tenant        Tenant       @relation("fk_162_crew_requirement_tenant_id", fields: [tenantId], references: [id])
+  productType   ProductType  @relation("fk_163_crew_requirement_product_type_id", fields: [productTypeId], references: [id])
+  offering      Offering?    @relation("fk_164_crew_requirement_offering_id", fields: [offeringId], references: [id])
+  serviceLine   ServiceLine? @relation("fk_165_crew_requirement_service_line_id", fields: [serviceLineId], references: [id])
+
+  @@index([tenantId])
+  @@index([productTypeId])
+  @@index([offeringId])
+  @@index([serviceLineId])
+  @@map("crew_requirement")
+}
+
+model ResourceCrew {
+  id           BigInt     @id @default(autoincrement())
+  tenantId     BigInt     @map("tenant_id")
+  resourceId   BigInt     @map("resource_id")
+  crewMemberId BigInt     @map("crew_member_id")
+  crewRoleCode String     @db.VarChar(50) @map("crew_role_code")
+  validFrom    DateTime?  @db.Date @map("valid_from")
+  validTo      DateTime?  @db.Date @map("valid_to")
+  tenant       Tenant     @relation("fk_166_resource_crew_tenant_id", fields: [tenantId], references: [id])
+  resource     Resource   @relation("fk_167_resource_crew_resource_id", fields: [resourceId], references: [id])
+  crewMember   CrewMember @relation("fk_168_resource_crew_crew_member_id", fields: [crewMemberId], references: [id])
+
+  @@index([tenantId])
+  @@index([resourceId])
+  @@index([crewMemberId])
+  @@map("resource_crew")
+}
+
+model TripCrew {
+  id                    BigInt     @id @default(autoincrement())
+  tenantId              BigInt     @map("tenant_id")
+  tripId                BigInt     @map("trip_id")
+  crewMemberId          BigInt     @map("crew_member_id")
+  assignedBy            BigInt?    @map("assigned_by")
+  replacedById          BigInt?    @map("replaced_by_id")
+  crewRoleCode          String     @db.VarChar(50) @map("crew_role_code")
+  dutyStatus            String     @db.VarChar(30) @map("duty_status")
+  assignedAt            DateTime?  @db.Timestamptz(6) @map("assigned_at")
+  checkedInAt           DateTime?  @db.Timestamptz(6) @map("checked_in_at")
+  confirmedAt           DateTime?  @db.Timestamptz(6) @map("confirmed_at")
+  notes                 String?    @db.Text
+  tenant                Tenant     @relation("fk_169_trip_crew_tenant_id", fields: [tenantId], references: [id])
+  trip                  Trip       @relation("fk_170_trip_crew_trip_id", fields: [tripId], references: [id])
+  crewMember            CrewMember @relation("fk_171_trip_crew_crew_member_id", fields: [crewMemberId], references: [id])
+  assignedByStaffUser   StaffUser? @relation("fk_172_trip_crew_assigned_by", fields: [assignedBy], references: [id])
+  replacedBy            TripCrew?  @relation("fk_173_trip_crew_replaced_by_id", fields: [replacedById], references: [id])
+  tripCrewsByReplacedBy TripCrew[] @relation("fk_173_trip_crew_replaced_by_id")
+
+  @@index([tenantId])
+  @@index([tripId])
+  @@index([crewMemberId])
+  @@index([assignedBy])
+  @@index([replacedById])
+  @@map("trip_crew")
+}
