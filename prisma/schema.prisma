@@ -177,25 +177,77 @@ model TenantSetting {
 }
 
 model StaffUser {
-  id                        BigInt            @id @default(autoincrement())
-  email                     String?           @db.VarChar(100)
-  phone                     String?           @db.VarChar(30)
-  fullName                  String            @db.VarChar(100) @map("full_name")
-  mfaEnabled                Boolean           @map("mfa_enabled")
-  status                    String            @db.VarChar(30)
-  createdAt                 DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
-  memberships               Membership[]      @relation("fk_9_membership_staff_user_id")
-  approvalRequestsByMaker   ApprovalRequest[] @relation("fk_17_approval_request_maker_id")
-  approvalRequestsByChecker ApprovalRequest[] @relation("fk_18_approval_request_checker_id")
-  holds                     Hold[]            @relation("fk_91_hold_staff_user_id")
-  allocationEvents          AllocationEvent[] @relation("fk_102_allocation_event_actor_id")
-  tripChanges               TripChange[]      @relation("fk_105_trip_change_actor_id")
-  bookings                  Booking[]         @relation("fk_110_booking_sold_by")
-  refunds                   Refund[]          @relation("fk_132_refund_approved_by")
-  crewMember                CrewMember?       @relation("fk_155_crew_member_staff_user_id")
-  tripCrews                 TripCrew[]        @relation("fk_172_trip_crew_assigned_by")
+  id                        BigInt                    @id @default(autoincrement())
+  email                     String?                   @unique @db.VarChar(100)
+  phone                     String?                   @db.VarChar(30)
+  fullName                  String                    @db.VarChar(100) @map("full_name")
+  passwordHash              String?                   @db.VarChar(255) @map("password_hash")
+  mfaEnabled                Boolean                   @map("mfa_enabled")
+  mfaSecret                 String?                   @db.VarChar(255) @map("mfa_secret")
+  status                    String                    @db.VarChar(30)
+  
+  // Tracking & Activity Fields
+  lastLoginAt               DateTime?                 @db.Timestamptz(6) @map("last_login_at")
+  lastLoginIp               String?                   @db.VarChar(45) @map("last_login_ip")
+  lastActiveAt              DateTime?                 @db.Timestamptz(6) @map("last_active_at")
+  failedLoginAttempts       Int                       @default(0) @map("failed_login_attempts")
+  lockedUntil               DateTime?                 @db.Timestamptz(6) @map("locked_until")
+  createdById               BigInt?                   @map("created_by_id")
+  updatedById               BigInt?                   @map("updated_by_id")
+  
+  createdAt                 DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                 DateTime                  @updatedAt @default(now()) @db.Timestamptz(6) @map("updated_at")
+  
+  createdByUser             StaffUser?                @relation("StaffCreatedBy", fields: [createdById], references: [id])
+  updatedByUser             StaffUser?                @relation("StaffUpdatedBy", fields: [updatedById], references: [id])
+  createdStaffUsers         StaffUser[]               @relation("StaffCreatedBy")
+  updatedStaffUsers         StaffUser[]               @relation("StaffUpdatedBy")
+  
+  memberships               Membership[]              @relation("fk_9_membership_staff_user_id")
+  federatedIdentities       StaffFederatedIdentity[]  @relation("fk_staff_federated_identity_staff_user_id")
+  staffSessions             StaffSession[]            @relation("fk_staff_session_staff_user_id")
+  approvalRequestsByMaker   ApprovalRequest[]         @relation("fk_17_approval_request_maker_id")
+  approvalRequestsByChecker ApprovalRequest[]         @relation("fk_18_approval_request_checker_id")
+  holds                     Hold[]                    @relation("fk_91_hold_staff_user_id")
+  allocationEvents          AllocationEvent[]         @relation("fk_102_allocation_event_actor_id")
+  tripChanges               TripChange[]              @relation("fk_105_trip_change_actor_id")
+  bookings                  Booking[]                 @relation("fk_110_booking_sold_by")
+  refunds                   Refund[]                  @relation("fk_132_refund_approved_by")
+  crewMember                CrewMember?               @relation("fk_155_crew_member_staff_user_id")
+  tripCrews                 TripCrew[]                @relation("fk_172_trip_crew_assigned_by")
 
+  @@index([createdById])
+  @@index([updatedById])
   @@map("staff_user")
+}
+
+model StaffFederatedIdentity {
+  id             BigInt    @id @default(autoincrement())
+  staffUserId    BigInt    @map("staff_user_id")
+  provider       String    @db.VarChar(50)
+  providerUserId String    @db.VarChar(255) @map("provider_user_id")
+  profileData    Json?     @map("profile_data")
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6) @map("updated_at")
+  staffUser      StaffUser @relation("fk_staff_federated_identity_staff_user_id", fields: [staffUserId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([staffUserId])
+  @@map("staff_federated_identity")
+}
+
+model StaffSession {
+  id          BigInt    @id @default(autoincrement())
+  staffUserId BigInt    @map("staff_user_id")
+  tokenHash   String    @db.VarChar(255) @map("token_hash")
+  ipAddress   String?   @db.VarChar(45) @map("ip_address")
+  userAgent   String?   @db.Text @map("user_agent")
+  expiresAt   DateTime? @db.Timestamptz(6) @map("expires_at")
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  staffUser   StaffUser @relation("fk_staff_session_staff_user_id", fields: [staffUserId], references: [id], onDelete: Cascade)
+
+  @@index([staffUserId])
+  @@map("staff_session")
 }
 
 model Membership {
@@ -273,7 +325,7 @@ model ApprovalRequest {
 
 model AuditLog {
   id         BigInt   @id @default(autoincrement())
-  tenantId   BigInt   @map("tenant_id")
+  tenantId   BigInt?  @map("tenant_id")
   actorType  String   @db.VarChar(50) @map("actor_type")
   actorId    BigInt   @map("actor_id")
   action     String   @db.VarChar(50)
@@ -284,6 +336,9 @@ model AuditLog {
   userAgent  String?  @db.Text @map("user_agent")
   createdAt  DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
 
+  @@index([tenantId])
+  @@index([actorId])
+  @@index([entityType, entityId])
   @@map("audit_log")
 }
 
@@ -292,15 +347,33 @@ model AuditLog {
 // ================================================================
 
 model CustomerIdentity {
-  id               BigInt            @id @default(autoincrement())
-  phone            String?           @unique @db.VarChar(30)
-  email            String?           @unique @db.VarChar(100)
-  fullName         String            @db.VarChar(100) @map("full_name")
-  createdAt        DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
-  customerProfiles CustomerProfile[] @relation("fk_20_customer_profile_identity_id")
-  customerSessions CustomerSession[] @relation("fk_25_customer_session_identity_id")
+  id                  BigInt                      @id @default(autoincrement())
+  phone               String?                     @unique @db.VarChar(30)
+  email               String?                     @unique @db.VarChar(100)
+  fullName            String                      @db.VarChar(100) @map("full_name")
+  passwordHash        String?                     @db.VarChar(255) @map("password_hash")
+  createdAt           DateTime                    @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @default(now()) @db.Timestamptz(6) @map("updated_at")
+  customerProfiles    CustomerProfile[]           @relation("fk_20_customer_profile_identity_id")
+  customerSessions    CustomerSession[]           @relation("fk_25_customer_session_identity_id")
+  federatedIdentities CustomerFederatedIdentity[] @relation("fk_customer_federated_identity_identity_id")
 
   @@map("customer_identity")
+}
+
+model CustomerFederatedIdentity {
+  id             BigInt           @id @default(autoincrement())
+  identityId     BigInt           @map("identity_id")
+  provider       String           @db.VarChar(50)
+  providerUserId String           @db.VarChar(255) @map("provider_user_id")
+  profileData    Json?            @map("profile_data")
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(6) @map("updated_at")
+  identity       CustomerIdentity @relation("fk_customer_federated_identity_identity_id", fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([identityId])
+  @@map("customer_federated_identity")
 }
 
 model CustomerProfile {
