@@ -79,6 +79,7 @@ model Tenant {
   crewRequirements       CrewRequirement[]       @relation("fk_162_crew_requirement_tenant_id")
   resourceCrews          ResourceCrew[]          @relation("fk_166_resource_crew_tenant_id")
   tripCrews              TripCrew[]              @relation("fk_169_trip_crew_tenant_id")
+  kycSubmissions         KycSubmission[]         @relation("fk_kyc_submission_tenant_id")
 
   @@index([planId])
   @@map("tenant")
@@ -206,6 +207,8 @@ model StaffUser {
   memberships               Membership[]              @relation("fk_9_membership_staff_user_id")
   federatedIdentities       StaffFederatedIdentity[]  @relation("fk_staff_federated_identity_staff_user_id")
   staffSessions             StaffSession[]            @relation("fk_staff_session_staff_user_id")
+  kycSubmissions            KycSubmission[]           @relation("fk_kyc_submission_staff_user_id")
+  reviewedKycSubmissions    KycSubmission[]           @relation("fk_kyc_submission_reviewed_by_id")
   approvalRequestsByMaker   ApprovalRequest[]         @relation("fk_17_approval_request_maker_id")
   approvalRequestsByChecker ApprovalRequest[]         @relation("fk_18_approval_request_checker_id")
   holds                     Hold[]                    @relation("fk_91_hold_staff_user_id")
@@ -248,6 +251,40 @@ model StaffSession {
 
   @@index([staffUserId])
   @@map("staff_session")
+}
+
+model KycSubmission {
+  id                   BigInt           @id @default(autoincrement())
+  tenantId             BigInt?          @map("tenant_id")
+  staffUserId          BigInt?          @map("staff_user_id")
+  customerProfileId    BigInt?          @map("customer_profile_id")
+  kycType              String           @default("STAFF") @db.VarChar(30) @map("kyc_type") // 'STAFF', 'TENANT', 'CUSTOMER'
+  idType               String           @db.VarChar(50) @map("id_type") // 'NID', 'PASSPORT', 'DRIVING_LICENSE', 'TRADE_LICENSE', 'TIN'
+  idNumberEncrypted    String?          @db.Text @map("id_number_encrypted")
+  idNumberMasked       String?          @db.VarChar(50) @map("id_number_masked")
+  documentUrls         String[]         @default([]) @db.Text @map("document_urls")
+  status               String           @default("PENDING") @db.VarChar(30) // 'PENDING', 'VERIFIED', 'REJECTED', 'RESUBMIT_REQUIRED'
+  rejectionReason      String?          @db.Text @map("rejection_reason")
+  submittedAt          DateTime         @default(now()) @db.Timestamptz(6) @map("submitted_at")
+  reviewedAt           DateTime?        @db.Timestamptz(6) @map("reviewed_at")
+  reviewedById         BigInt?          @map("reviewed_by_id")
+  verificationMetadata Json?            @map("verification_metadata")
+  expiryDate           DateTime?        @db.Date @map("expiry_date")
+  createdAt            DateTime         @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt            DateTime         @updatedAt @default(now()) @db.Timestamptz(6) @map("updated_at")
+
+  tenant               Tenant?          @relation("fk_kyc_submission_tenant_id", fields: [tenantId], references: [id], onDelete: Cascade)
+  staffUser            StaffUser?       @relation("fk_kyc_submission_staff_user_id", fields: [staffUserId], references: [id], onDelete: Cascade)
+  customerProfile      CustomerProfile? @relation("fk_kyc_submission_customer_profile_id", fields: [customerProfileId], references: [id], onDelete: Cascade)
+  reviewedBy           StaffUser?       @relation("fk_kyc_submission_reviewed_by_id", fields: [reviewedById], references: [id])
+
+  @@index([tenantId])
+  @@index([staffUserId])
+  @@index([customerProfileId])
+  @@index([reviewedById])
+  @@index([status])
+  @@index([kycType])
+  @@map("kyc_submission")
 }
 
 model Membership {
@@ -393,6 +430,7 @@ model CustomerProfile {
   promoRedemptions PromoRedemption[] @relation("fk_137_promo_redemption_profile_id")
   walletAccounts   WalletAccount[]   @relation("fk_139_wallet_account_profile_id")
   loyaltyAccount   LoyaltyAccount?   @relation("fk_141_loyalty_account_profile_id")
+  kycSubmissions   KycSubmission[]   @relation("fk_kyc_submission_customer_profile_id")
 
   @@index([tenantId])
   @@index([identityId])

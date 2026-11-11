@@ -2358,6 +2358,143 @@ async function seedTenants(
 }
 
 // ---------------------------------------------------------------------------
+// 13. KYC SUBMISSIONS (Staff & Tenant Verification)
+// ---------------------------------------------------------------------------
+async function seedKycSubmissions(superAdmin: { id: bigint }) {
+  const superAdminUser = await prisma.staffUser.findFirst({
+    where: { id: superAdmin.id },
+  });
+  if (!superAdminUser) return;
+
+  const greenLineTenant = await prisma.tenant.findFirst({
+    where: { name: 'Green Line Paribahan' },
+  });
+  const greenLineAdmin = await prisma.staffUser.findFirst({
+    where: { email: 'admin@greenline.example.com' },
+  });
+  const shohagTenant = await prisma.tenant.findFirst({
+    where: { name: 'Shohag Elite Travels' },
+  });
+  const shohagAdmin = await prisma.staffUser.findFirst({
+    where: { email: 'admin@shohag.example.com' },
+  });
+
+  const now = new Date();
+
+  // 1. Super Admin Platform Staff KYC (Verified)
+  const existingSuperAdminKyc = await prisma.kycSubmission.findFirst({
+    where: { staffUserId: superAdminUser.id, idType: 'NID' },
+  });
+  if (!existingSuperAdminKyc) {
+    await prisma.kycSubmission.create({
+      data: {
+        staffUserId: superAdminUser.id,
+        tenantId: null,
+        kycType: 'STAFF',
+        idType: 'NID',
+        idNumberMasked: '***-***-8801',
+        documentUrls: [
+          'https://storage.fairpath.internal/kyc/superadmin-nid-front.jpg',
+          'https://storage.fairpath.internal/kyc/superadmin-nid-back.jpg',
+        ],
+        status: 'VERIFIED',
+        reviewedById: superAdminUser.id,
+        reviewedAt: now,
+        verificationMetadata: {
+          issuer: 'Election Commission of Bangladesh',
+          matchScore: 99.4,
+          ocrStatus: 'SUCCESS',
+        },
+      },
+    });
+  }
+
+  // 2. Green Line Tenant Admin KYC (Verified by Super Admin)
+  if (greenLineTenant && greenLineAdmin) {
+    const existingGlAdminKyc = await prisma.kycSubmission.findFirst({
+      where: { staffUserId: greenLineAdmin.id, idType: 'PASSPORT' },
+    });
+    if (!existingGlAdminKyc) {
+      await prisma.kycSubmission.create({
+        data: {
+          staffUserId: greenLineAdmin.id,
+          tenantId: greenLineTenant.id,
+          kycType: 'STAFF',
+          idType: 'PASSPORT',
+          idNumberMasked: 'A0***4821',
+          documentUrls: [
+            'https://storage.fairpath.internal/kyc/greenline-admin-passport.jpg',
+          ],
+          status: 'VERIFIED',
+          reviewedById: superAdminUser.id,
+          reviewedAt: new Date(now.getTime() - 24 * 3600 * 1000),
+          verificationMetadata: {
+            country: 'BGD',
+            verifiedBy: 'SuperAdmin',
+          },
+        },
+      });
+    }
+
+    // 3. Green Line Tenant Business KYB/KYC (Trade License)
+    const existingGlBusinessKyc = await prisma.kycSubmission.findFirst({
+      where: {
+        tenantId: greenLineTenant.id,
+        kycType: 'TENANT',
+        idType: 'TRADE_LICENSE',
+      },
+    });
+    if (!existingGlBusinessKyc) {
+      await prisma.kycSubmission.create({
+        data: {
+          tenantId: greenLineTenant.id,
+          kycType: 'TENANT',
+          idType: 'TRADE_LICENSE',
+          idNumberMasked: 'TRAD/***/**/2024',
+          documentUrls: [
+            'https://storage.fairpath.internal/kyc/greenline-trade-license.pdf',
+          ],
+          status: 'VERIFIED',
+          reviewedById: superAdminUser.id,
+          reviewedAt: new Date(now.getTime() - 48 * 3600 * 1000),
+          verificationMetadata: {
+            entityName: 'Green Line Paribahan Ltd',
+            tin: '123456789012',
+          },
+        },
+      });
+    }
+  }
+
+  // 4. Shohag Tenant Admin KYC (Pending Review)
+  if (shohagTenant && shohagAdmin) {
+    const existingShohagAdminKyc = await prisma.kycSubmission.findFirst({
+      where: { staffUserId: shohagAdmin.id, idType: 'NID' },
+    });
+    if (!existingShohagAdminKyc) {
+      await prisma.kycSubmission.create({
+        data: {
+          staffUserId: shohagAdmin.id,
+          tenantId: shohagTenant.id,
+          kycType: 'STAFF',
+          idType: 'NID',
+          idNumberMasked: '***-***-7124',
+          documentUrls: [
+            'https://storage.fairpath.internal/kyc/shohag-admin-nid.jpg',
+          ],
+          status: 'PENDING',
+          verificationMetadata: {
+            submittedVia: 'WEB_PORTAL',
+          },
+        },
+      });
+    }
+  }
+
+  log('sample KYC submissions (platform staff, tenant staff, and tenant KYB)');
+}
+
+// ---------------------------------------------------------------------------
 async function main() {
   console.log('Seeding configuration data...');
   await seedPlans();
@@ -2372,6 +2509,7 @@ async function main() {
   await seedLocations(); // remove this line if you do not want reference locations
   const superAdmin = await seedSuperAdmin(roleIds);
   await seedTenants(roleIds, superAdmin, ptIds);
+  await seedKycSubmissions(superAdmin);
   console.log('Done.');
 }
 
