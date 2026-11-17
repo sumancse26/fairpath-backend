@@ -3,11 +3,12 @@ import { DatabaseModule } from '../../../database/database.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthProvider } from './jwt.provider.js';
+import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.js';
 
 @Module({
   imports: [DatabaseModule],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthProvider],
-  exports: [AuthService, JwtAuthProvider],
+  providers: [AuthService, JwtAuthProvider, JwtAuthGuard],
+  exports: [AuthService, JwtAuthProvider, JwtAuthGuard],
 })
 export class AuthModule {}
