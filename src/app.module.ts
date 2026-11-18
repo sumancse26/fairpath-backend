@@ -23,18 +23,25 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       envFilePath: '.env',
     }),
     ObserveModule.forRoot({
-      appKey: process.env.OBSERVE_APP_KEY ?? '',
-      appSecret: process.env.OBSERVE_APP_SECRET ?? '',
+      enabled: Boolean(
+        process.env.OBSERVE_APP_KEY &&
+        process.env.OBSERVE_APP_SECRET &&
+        process.env.OBSERVE_APP_KEY !== 'YOUR_APP_KEY',
+      ),
+      appKey: process.env.OBSERVE_APP_KEY,
+      appSecret: process.env.OBSERVE_APP_SECRET,
       serviceId: 'fairpath-backend',
     }),
     AuthenticationModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService): AuthenticationModuleOptions => {
-        const key = config.get<string>('JWT_SECRET') || '';
+        const key =
+          config.get<string>('JWT_SECRET') ||
+          'kHdshyryGYTRWE@dhf*hdf#dfgh&*sSHHGJSgwelfgUYUWEfd';
         const issuer = config.get<string>('JWT_ISSUER') || undefined;
-        const ttl = (config.get<string>('JWT_EXPIRES_IN') || '') as any;
+        const ttl = (config.get<string>('JWT_EXPIRES_IN') || '15m') as any;
         const refreshTtl = (config.get<string>('JWT_REFRESH_EXPIRES_IN') ||
-          '') as any;
+          '7d') as any;
 
         return {
           accessToken: {
