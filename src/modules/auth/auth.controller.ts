@@ -6,10 +6,12 @@ import {
   HttpStatus,
   Ip,
   Post,
+  Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -20,7 +22,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator.js';
 import type { AuthUser } from './types/auth.types.js';
 
-@Controller('auth')
+@Controller({ path: 'auth', version: '1' })
 export class AuthController {
   private readonly cookieDomain: string;
   private readonly cookieSecure: boolean;
@@ -60,9 +62,16 @@ export class AuthController {
   @ResponseMessage('Token refreshed successfully')
   async refresh(
     @Body() dto: RefreshTokenDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.refresh(dto);
+    const token = dto?.refreshToken || this.extractCookie(req, 'refresh_token');
+
+    if (!token) {
+      throw new UnauthorizedException('Refresh token is required');
+    }
+
+    const result = await this.authService.refresh({ refreshToken: token });
 
     this.setTokenCookies(res, result.accessToken, result.refreshToken);
 
@@ -79,9 +88,14 @@ export class AuthController {
   @ResponseMessage('Logged out successfully')
   async logout(
     @Body() dto: RefreshTokenDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    await this.authService.logout(dto);
+    const token = dto?.refreshToken || this.extractCookie(req, 'refresh_token');
+
+    if (token) {
+      await this.authService.logout({ refreshToken: token });
+    }
     this.clearTokenCookies(res);
   }
 
@@ -90,6 +104,13 @@ export class AuthController {
   @ResponseMessage('User profile retrieved')
   getMe(@CurrentUser() user: AuthUser) {
     return { user };
+  }
+
+  private extractCookie(req: Request, name: string): string | undefined {
+    const cookieHeader = req?.headers?.cookie;
+    if (!cookieHeader) return undefined;
+    const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+    return match ? decodeURIComponent(match[1]) : undefined;
   }
 
   private setTokenCookies(
@@ -113,7 +134,7 @@ export class AuthController {
     res.cookie('refresh_token', refreshToken, {
       ...baseOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/api/auth', // Only sent to auth endpoints
+      path: '/api', // Accessible across API versions
     });
   }
 
@@ -127,6 +148,6 @@ export class AuthController {
     };
 
     res.clearCookie('access_token', baseOptions);
-    res.clearCookie('refresh_token', { ...baseOptions, path: '/api/auth' });
+    res.clearCookie('refresh_token', { ...baseOptions, path: '/api' });
   }
 }

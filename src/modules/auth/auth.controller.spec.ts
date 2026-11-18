@@ -23,6 +23,10 @@ describe('AuthController', () => {
     mockConfig as any,
   );
 
+  const mockReq = {
+    headers: {},
+  } as any;
+
   const mockRes = {
     cookie: vi.fn(),
     clearCookie: vi.fn(),
@@ -53,11 +57,11 @@ describe('AuthController', () => {
     expect(mockRes.cookie).toHaveBeenCalledWith(
       'refresh_token',
       'refresh-456',
-      expect.objectContaining({ httpOnly: true, path: '/api/auth' }),
+      expect.objectContaining({ httpOnly: true, path: '/api' }),
     );
   });
 
-  it('refresh sets new cookies', async () => {
+  it('refresh sets new cookies from body', async () => {
     mockAuthService.refresh.mockResolvedValue({
       accessToken: 'new-access',
       refreshToken: 'new-refresh',
@@ -66,6 +70,7 @@ describe('AuthController', () => {
 
     const result = await controller.refresh(
       { refreshToken: 'old-token' },
+      mockReq,
       mockRes,
     );
 
@@ -74,10 +79,29 @@ describe('AuthController', () => {
     expect(mockRes.cookie).toHaveBeenCalled();
   });
 
+  it('refresh falls back to cookie when body has no token', async () => {
+    mockAuthService.refresh.mockResolvedValue({
+      accessToken: 'cookie-access',
+      refreshToken: 'cookie-refresh',
+      expiresIn: 900,
+    });
+
+    const reqWithCookie = {
+      headers: { cookie: 'refresh_token=from-cookie; other=val' },
+    } as any;
+
+    const result = await controller.refresh({}, reqWithCookie, mockRes);
+
+    expect(mockAuthService.refresh).toHaveBeenCalledWith({
+      refreshToken: 'from-cookie',
+    });
+    expect(result.accessToken).toBe('cookie-access');
+  });
+
   it('logout clears cookies', async () => {
     mockAuthService.logout.mockResolvedValue(undefined);
 
-    await controller.logout({ refreshToken: 'token' }, mockRes);
+    await controller.logout({ refreshToken: 'token' }, mockReq, mockRes);
 
     expect(mockRes.clearCookie).toHaveBeenCalledWith(
       'access_token',
@@ -85,7 +109,7 @@ describe('AuthController', () => {
     );
     expect(mockRes.clearCookie).toHaveBeenCalledWith(
       'refresh_token',
-      expect.objectContaining({ path: '/api/auth' }),
+      expect.objectContaining({ path: '/api' }),
     );
   });
 

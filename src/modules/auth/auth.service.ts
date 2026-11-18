@@ -44,7 +44,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    if (user.status !== 'ACTIVE') {
+    if (user.status?.toUpperCase() !== 'ACTIVE') {
       throw new UnauthorizedException('Account is inactive or suspended');
     }
 
