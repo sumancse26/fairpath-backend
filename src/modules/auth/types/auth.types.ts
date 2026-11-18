@@ -1,36 +1,34 @@
-export interface RequestMeta {
-  ipAddress?: string;
-  userAgent?: string;
-}
-
-export interface TenantRoleInfo {
+export interface JwtPayload {
+  sub: string;
+  email: string;
+  roleId: string | null;
   tenantId: string | null;
-  tenantName?: string;
-  // tenantSlug?: string;
-  roleName: string;
-  // roleSlug: string;
+  branchId: string | null;
+  isSuperAdmin: boolean;
 }
 
 export interface AuthUser {
   id: string;
   email: string;
   fullName: string;
-  phone?: string | null;
+  phone: string | null;
   status: string;
   isSuperAdmin: boolean;
-  memberships: TenantRoleInfo[];
+  roleId: string | null;
+  roleName: string | null;
+  tenantId: string | null;
+  tenantName: string | null;
+  branchId: string | null;
 }
 
 export interface AuthTokensResponse {
-  tokenType: 'Bearer';
+  user: AuthUser;
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
-  user: AuthUser;
 }
 
 export interface RefreshTokenResponse {
-  tokenType: 'Bearer';
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
@@ -39,16 +37,11 @@ export interface RefreshTokenResponse {
 export interface StaffMembershipRecord {
   id: bigint;
   tenantId: bigint | null;
+  branchId: bigint | null;
+  roleId: bigint;
   status: string;
-  role: {
-    name: string;
-    // slug: string;
-  };
-  tenant: {
-    id: bigint;
-    name: string;
-    // slug: string;
-  } | null;
+  role: { id: bigint; name: string };
+  tenant: { id: bigint; name: string } | null;
 }
 
 export interface StaffUserRecord {

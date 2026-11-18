@@ -9,7 +9,7 @@ import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { DatabaseModule } from './database/database.module.js';
-import { AuthModule } from './modules/tenancy-access/auth/auth.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
@@ -28,9 +28,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     AuthenticationModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService): AuthenticationModuleOptions => {
-        const key =
-          config.get<string>('JWT_SECRET') ||
-          'fairpath-default-dev-super-secret-jwt-key-min-32-chars!';
+        const key = config.get<string>('JWT_SECRET') || 'change-me-in-env';
         const issuer = config.get<string>('JWT_ISSUER') || undefined;
         const ttl = (config.get<string>('JWT_EXPIRES_IN') || '15m') as any;
 

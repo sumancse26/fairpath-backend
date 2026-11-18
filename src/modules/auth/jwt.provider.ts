@@ -21,7 +21,6 @@ export class JwtAuthProvider extends JwtBearerProvider<AuthUser> {
     if (!claims.sub) {
       return null;
     }
-    console.log('claims', claims);
     return this.authService.validateUserById(claims.sub);
   }
 }
