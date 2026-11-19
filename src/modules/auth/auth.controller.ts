@@ -14,8 +14,8 @@ import {
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service.js';
-import { LoginDto } from './dto/login.dto.js';
-import { RefreshTokenDto } from './dto/refresh-token.dto.js';
+import { loginSchema, type LoginDto } from './dto/login.dto.js';
+import { refreshTokenSchema, type RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { Public } from '../../common/decorators/public.decorator.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
@@ -40,13 +40,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Login successful')
   async login(
-    @Body() dto: LoginDto,
+    @Body({ schema: loginSchema }) dto: LoginDto,
     @Ip() ip: string,
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.login(dto, ip);
 
-    this.setTokenCookies(res, result.accessToken, result.refreshToken);
+    this.setTokenCookies(res, result.accessToken, result.refreshToken, result.user);
 
     return {
       user: result.user,
@@ -61,17 +61,17 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Token refreshed successfully')
   async refresh(
-    @Body() dto: RefreshTokenDto,
+    @Body({ schema: refreshTokenSchema }) dto: RefreshTokenDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const token = dto?.refreshToken || this.extractCookie(req, 'refresh_token');
+    const token = dto.refreshToken || this.extractCookie(req, 'refresh_token');
 
     if (!token) {
       throw new UnauthorizedException('Refresh token is required');
     }
 
-    const result = await this.authService.refresh({ refreshToken: token });
+    const result = await this.authService.refresh(token);
 
     this.setTokenCookies(res, result.accessToken, result.refreshToken);
 
@@ -87,14 +87,14 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Logged out successfully')
   async logout(
-    @Body() dto: RefreshTokenDto,
+    @Body({ schema: refreshTokenSchema }) dto: RefreshTokenDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const token = dto?.refreshToken || this.extractCookie(req, 'refresh_token');
+    const token = dto.refreshToken || this.extractCookie(req, 'refresh_token');
 
     if (token) {
-      await this.authService.logout({ refreshToken: token });
+      await this.authService.logout(token);
     }
     this.clearTokenCookies(res);
   }
@@ -117,9 +117,9 @@ export class AuthController {
     res: Response,
     accessToken: string,
     refreshToken: string,
+    user?: AuthUser,
   ): void {
     const baseOptions = {
-      httpOnly: true,
       secure: this.cookieSecure,
       domain: this.cookieDomain,
       sameSite: 'lax' as const,
@@ -128,26 +128,48 @@ export class AuthController {
 
     res.cookie('access_token', accessToken, {
       ...baseOptions,
+      httpOnly: true,
       maxAge: 15 * 60 * 1000, // 15 minutes
     });
 
     res.cookie('refresh_token', refreshToken, {
       ...baseOptions,
+      httpOnly: true,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/api', // Accessible across API versions
     });
+
+    if (user) {
+      const userCookieOptions = {
+        ...baseOptions,
+        httpOnly: false,
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      };
+
+      res.cookie('user_id', user.id, userCookieOptions);
+
+      const role = user.roleName || user.roleId;
+      if (role) {
+        res.cookie('role', role, userCookieOptions);
+      }
+      if (user.roleId) {
+        res.cookie('role_id', user.roleId, userCookieOptions);
+      }
+    }
   }
 
   private clearTokenCookies(res: Response): void {
     const baseOptions = {
-      httpOnly: true,
       secure: this.cookieSecure,
       domain: this.cookieDomain,
       sameSite: 'lax' as const,
       path: '/',
     };
 
-    res.clearCookie('access_token', baseOptions);
-    res.clearCookie('refresh_token', { ...baseOptions, path: '/api' });
+    res.clearCookie('access_token', { ...baseOptions, httpOnly: true });
+    res.clearCookie('refresh_token', { ...baseOptions, httpOnly: true, path: '/api' });
+    res.clearCookie('user_id', { ...baseOptions, httpOnly: false });
+    res.clearCookie('role', { ...baseOptions, httpOnly: false });
+    res.clearCookie('role_id', { ...baseOptions, httpOnly: false });
   }
 }

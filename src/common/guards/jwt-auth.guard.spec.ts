@@ -90,4 +90,38 @@ describe('JwtAuthGuard', () => {
     expect(req.headers.authorization).toBeUndefined();
     expect(result).toBe(true);
   });
+
+  it('normalizes tokens with surrounding quotes or duplicate Bearer prefix', async () => {
+    const context = createMockContext({
+      authorization: 'Bearer "quoted-jwt-token"',
+    });
+
+    vi.spyOn(
+      Object.getPrototypeOf(JwtAuthGuard.prototype),
+      'canActivate',
+    ).mockResolvedValue(true);
+
+    const result = await guard.canActivate(context);
+    const req = context.switchToHttp().getRequest();
+
+    expect(req.headers.authorization).toBe('Bearer quoted-jwt-token');
+    expect(result).toBe(true);
+  });
+
+  it('prepends Bearer prefix if raw token is passed in authorization header', async () => {
+    const context = createMockContext({
+      authorization: 'raw-jwt-token',
+    });
+
+    vi.spyOn(
+      Object.getPrototypeOf(JwtAuthGuard.prototype),
+      'canActivate',
+    ).mockResolvedValue(true);
+
+    const result = await guard.canActivate(context);
+    const req = context.switchToHttp().getRequest();
+
+    expect(req.headers.authorization).toBe('Bearer raw-jwt-token');
+    expect(result).toBe(true);
+  });
 });

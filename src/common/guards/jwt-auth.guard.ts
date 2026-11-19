@@ -50,11 +50,30 @@ export class JwtAuthGuard extends AuthenticationGuard {
   }
 
   /**
-   * If `Authorization` header is not present, attempt to extract `access_token`
-   * from the request cookie and inject it as `Bearer <token>`.
+   * Extracts and normalizes the bearer token from the Authorization header or cookie.
+   * Tolerates common client formatting issues such as quotes, duplicate "Bearer",
+   * trailing semicolons, or missing "Bearer" prefixes.
    */
   private extractAndNormalizeToken(req: Request): void {
-    if (req.headers.authorization) {
+    let auth = req.headers.authorization;
+
+    if (auth) {
+      auth = auth.trim().replace(/^["']|["']$/g, '').trim();
+      auth = auth.replace(/^(?:Bearer\s+)+/i, 'Bearer ');
+
+      if (!/^Bearer\s+/i.test(auth)) {
+        auth = `Bearer ${auth}`;
+      }
+
+      const match = auth.match(/^Bearer\s+(.*)$/i);
+      if (match?.[1]) {
+        let token = match[1].trim();
+        token = token.replace(/^["']|["']$/g, '').trim();
+        token = token.replace(/;+$/, '').trim();
+        auth = `Bearer ${token}`;
+      }
+
+      req.headers.authorization = auth;
       return;
     }
 
@@ -65,7 +84,10 @@ export class JwtAuthGuard extends AuthenticationGuard {
 
     const match = cookieHeader.match(/(?:^|;\s*)access_token=([^;]+)/);
     if (match?.[1]) {
-      req.headers.authorization = `Bearer ${decodeURIComponent(match[1])}`;
+      let token = decodeURIComponent(match[1]).trim();
+      token = token.replace(/^["']|["']$/g, '').trim();
+      token = token.replace(/;+$/, '').trim();
+      req.headers.authorization = `Bearer ${token}`;
     }
   }
 }

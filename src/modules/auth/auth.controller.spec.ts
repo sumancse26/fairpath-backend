@@ -59,6 +59,11 @@ describe('AuthController', () => {
       'refresh-456',
       expect.objectContaining({ httpOnly: true, path: '/api' }),
     );
+    expect(mockRes.cookie).toHaveBeenCalledWith(
+      'user_id',
+      '1',
+      expect.objectContaining({ httpOnly: false }),
+    );
   });
 
   it('refresh sets new cookies from body', async () => {
@@ -74,6 +79,7 @@ describe('AuthController', () => {
       mockRes,
     );
 
+    expect(mockAuthService.refresh).toHaveBeenCalledWith('old-token');
     expect(result.accessToken).toBe('new-access');
     expect(result.refreshToken).toBe('new-refresh');
     expect(mockRes.cookie).toHaveBeenCalled();
@@ -92,9 +98,7 @@ describe('AuthController', () => {
 
     const result = await controller.refresh({}, reqWithCookie, mockRes);
 
-    expect(mockAuthService.refresh).toHaveBeenCalledWith({
-      refreshToken: 'from-cookie',
-    });
+    expect(mockAuthService.refresh).toHaveBeenCalledWith('from-cookie');
     expect(result.accessToken).toBe('cookie-access');
   });
 
@@ -103,6 +107,7 @@ describe('AuthController', () => {
 
     await controller.logout({ refreshToken: 'token' }, mockReq, mockRes);
 
+    expect(mockAuthService.logout).toHaveBeenCalledWith('token');
     expect(mockRes.clearCookie).toHaveBeenCalledWith(
       'access_token',
       expect.any(Object),

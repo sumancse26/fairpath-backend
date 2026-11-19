@@ -1,4 +1,4 @@
-import { VersioningType } from '@nestjs/common';
+import { StandardSchemaValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule, ObserveInstrument } from './app.module.js';
 
@@ -14,6 +14,8 @@ async function bootstrap() {
       : true,
     credentials: true,
   });
+
+  app.useGlobalPipes(new StandardSchemaValidationPipe());
 
   app.setGlobalPrefix('api');
 

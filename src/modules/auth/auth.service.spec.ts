@@ -1,4 +1,3 @@
-import { UnauthorizedException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service.js';
@@ -26,12 +25,6 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('throws if email or password is missing', async () => {
-      await expect(
-        authService.login({ email: '', password: '' }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
     it('throws if user not found', async () => {
       mockDb.staffUser.findUnique.mockResolvedValue(null);
 
@@ -132,22 +125,16 @@ describe('AuthService', () => {
         expiresIn: 900,
       });
 
-      const result = await authService.refresh({ refreshToken: 'old-token' });
+      const result = await authService.refresh('old-token');
       expect(result.accessToken).toBe('new-access');
       expect(result.refreshToken).toBe('new-refresh');
-    });
-
-    it('throws if refresh token is missing', async () => {
-      await expect(
-        authService.refresh({ refreshToken: '' }),
-      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('throws on invalid token', async () => {
       mockTokenService.refresh.mockRejectedValue(new Error('bad'));
 
       await expect(
-        authService.refresh({ refreshToken: 'invalid' }),
+        authService.refresh('invalid'),
       ).rejects.toThrow('Invalid or expired refresh token');
     });
   });
@@ -156,7 +143,7 @@ describe('AuthService', () => {
     it('revokes refresh token', async () => {
       mockTokenService.revoke.mockResolvedValue(true);
 
-      await authService.logout({ refreshToken: 'token' });
+      await authService.logout('token');
       expect(mockTokenService.revoke).toHaveBeenCalledWith('token');
     });
   });

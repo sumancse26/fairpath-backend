@@ -13,6 +13,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor.js';
+import { TenantsModule } from './modules/tenancy-access/tenants/tenants.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -58,6 +59,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
     DatabaseModule,
     AuthModule,
+    TenantsModule,
   ],
   controllers: [AppController],
   providers: [

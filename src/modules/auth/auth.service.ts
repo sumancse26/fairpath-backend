@@ -3,7 +3,6 @@ import bcrypt from 'bcryptjs';
 import { TokenService } from '@nestjs/authentication';
 import { DatabaseService } from '../../database/database.service.js';
 import type { LoginDto } from './dto/login.dto.js';
-import type { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import type {
   AuthTokensResponse,
   AuthUser,
@@ -30,10 +29,7 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto, ip?: string): Promise<AuthTokensResponse> {
-    const email = dto.email?.trim().toLowerCase();
-    if (!email || !dto.password) {
-      throw new UnauthorizedException('Email and password are required');
-    }
+    const email = dto.email.toLowerCase();
 
     const user = (await this.db.staffUser.findUnique({
       where: { email },
@@ -53,7 +49,6 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    // Update login tracking
     await this.db.staffUser.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date(), lastLoginIp: ip ?? null },
@@ -75,13 +70,9 @@ export class AuthService {
     };
   }
 
-  async refresh(dto: RefreshTokenDto): Promise<RefreshTokenResponse> {
-    if (!dto.refreshToken) {
-      throw new UnauthorizedException('Refresh token is required');
-    }
-
+  async refresh(refreshToken: string): Promise<RefreshTokenResponse> {
     try {
-      const tokens = await this.tokenService.refresh(dto.refreshToken);
+      const tokens = await this.tokenService.refresh(refreshToken);
       return {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
@@ -92,13 +83,11 @@ export class AuthService {
     }
   }
 
-  async logout(dto: RefreshTokenDto): Promise<void> {
-    if (dto.refreshToken) {
-      try {
-        await this.tokenService.revoke(dto.refreshToken);
-      } catch {
-        // Already revoked — ignore
-      }
+  async logout(refreshToken: string): Promise<void> {
+    try {
+      await this.tokenService.revoke(refreshToken);
+    } catch {
+      // Already revoked — ignore
     }
   }
 
