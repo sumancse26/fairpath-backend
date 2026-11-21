@@ -2,8 +2,6 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  InternalServerErrorException,
-  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -12,83 +10,71 @@ import { DatabaseService } from '../../../database/database.service.js';
 
 @Injectable()
 export class TenantsService {
-  private readonly logger = new Logger(TenantsService.name);
-
   constructor(private readonly db: DatabaseService) {}
 
   async createTenant(payload: CreateTenantType, roleId?: string) {
-    if (!roleId) {
-      throw new UnauthorizedException('Authentication required');
+    // --- Auth: role must exist and be a platform-level system role ---
+    if (!roleId) throw new UnauthorizedException('Authentication required');
+
+    const role = await this.db.role.findUnique({ where: { id: BigInt(roleId) } });
+    if (!role || !role.isSystem || role.tenantId !== null) {
+      throw new ForbiddenException('Only platform Super Admins can create tenants');
     }
 
-    if (roleId !== '1') {
-      throw new ForbiddenException(
-        'You do not have permission to create a tenant',
-      );
-    }
+    // --- Validate plan ---
+    const plan = await this.db.plan.findUnique({ where: { id: BigInt(payload.plan_id) } });
+    if (!plan) throw new NotFoundException(`Plan ${payload.plan_id} not found`);
 
-    const plan = await this.db.plan.findUnique({
-      where: { id: BigInt(payload.plan_id) },
-    });
+    // --- Normalize inputs ---
+    const name   = payload.name.trim();
+    const domain = payload.domain?.trim() || null;
 
-    if (!plan) {
-      throw new NotFoundException(
-        `Subscription plan with ID ${payload.plan_id} not found`,
-      );
-    }
-
-    const trimmedName = payload.name.trim();
-    const trimmedDomain = payload.domain?.trim() || null;
-
+    // --- Check uniqueness ---
     const existing = await this.db.tenant.findFirst({
       where: {
         OR: [
-          { name: { equals: trimmedName, mode: 'insensitive' as const } },
-          ...(trimmedDomain
-            ? [
-                {
-                  domain: {
-                    equals: trimmedDomain,
-                    mode: 'insensitive' as const,
-                  },
-                },
-              ]
-            : []),
+          { name:   { equals: name,   mode: 'insensitive' as const } },
+          ...(domain ? [{ domain: { equals: domain, mode: 'insensitive' as const } }] : []),
         ],
       },
     });
-
     if (existing) {
-      const isNameConflict =
-        existing.name.toLowerCase() === trimmedName.toLowerCase();
-      throw new ConflictException(
-        isNameConflict
-          ? `Tenant with name "${trimmedName}" already exists`
-          : `Tenant with domain "${trimmedDomain}" already exists`,
-      );
+      const field = existing.name.toLowerCase() === name.toLowerCase() ? 'name' : 'domain';
+      throw new ConflictException(`Tenant with this ${field} already exists`);
     }
 
-    try {
-      const tenant = await this.db.tenant.create({
-        data: {
-          planId: BigInt(payload.plan_id),
-          name: trimmedName,
-          domain: trimmedDomain,
-          status: 'APPLIED',
-          paymentModel: 'TENANT_COLLECT',
-        },
-      });
+    // --- Resolve status and payment model from lookup table ---
+    const [tenantStatusMst, paymentModelMst] = await Promise.all([
+      this.db.lookupMst.findUnique({ where: { code: 'TENANT_STATUS'  } }),
+      this.db.lookupMst.findUnique({ where: { code: 'PAYMENT_MODEL' } }),
+    ]);
 
-      return {
-        id: tenant.id.toString(),
-        planId: tenant.planId.toString(),
-        name: tenant.name,
-      };
-    } catch (error) {
-      this.logger.error('Failed to create tenant in database:', error);
-      throw new InternalServerErrorException(
-        'An error occurred while creating the tenant',
-      );
-    }
+    if (!tenantStatusMst)  throw new NotFoundException('Lookup group TENANT_STATUS not found');
+    if (!paymentModelMst)  throw new NotFoundException('Lookup group PAYMENT_MODEL not found');
+
+    const [statusDtl, paymentModelDtl] = await Promise.all([
+      this.db.lookupDtl.findFirst({ where: { lookupMstId: tenantStatusMst.id,  code: 'APPLIED'        } }),
+      this.db.lookupDtl.findFirst({ where: { lookupMstId: paymentModelMst.id,  code: 'TENANT_COLLECT' } }),
+    ]);
+
+    if (!statusDtl)       throw new NotFoundException('Lookup TENANT_STATUS.APPLIED not found');
+    if (!paymentModelDtl) throw new NotFoundException('Lookup PAYMENT_MODEL.TENANT_COLLECT not found');
+
+    // --- Create tenant ---
+    const tenant = await this.db.tenant.create({
+      data: {
+        planId:         plan.id,
+        name,
+        domain,
+        statusId:       statusDtl.id,
+        paymentModelId: paymentModelDtl.id,
+      },
+    });
+
+    return {
+      id:     tenant.id.toString(),
+      planId: tenant.planId.toString(),
+      name:   tenant.name,
+    };
   }
 }

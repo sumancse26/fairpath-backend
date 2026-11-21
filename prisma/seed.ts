@@ -4,7 +4,8 @@
  * Inserts all platform-level CONFIGURATION data, every lookup value (lookup_mst / lookup_dtl),
  * exactly ONE platform super admin, and a few demo tenants.
  *
- * Place at:   prisma/seed.ts
+ * Single self-contained file: prisma/seed.ts
+ *
  * package.json:
  *   "prisma": { "seed": "tsx prisma/seed.ts" }      // or "ts-node prisma/seed.ts"
  * Run:
@@ -38,79 +39,39 @@ type Json = Prisma.InputJsonValue;
 
 const log = (msg: string) => console.log(`  ✓ ${msg}`);
 
-// ---------------------------------------------------------------------------
-// 0. LOOKUP ENGINE (lookup_mst / lookup_dtl + id resolver)
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// 0. LOOKUPS (lookup_mst / lookup_dtl): data + engine
+// ===========================================================================
 type LV = [code: string, label: string, meta?: Json];
-type LookupGroup = { code: string; name: string; values: LV[] };
+type LookupGroup = {
+  code: string;
+  name: string;
+  description?: string;
+  /** false = tenants/admins may extend the group from the UI (e.g. COUNTRY, LOCALE). Default true. */
+  isSystem?: boolean;
+  values: LV[];
+};
 
-const lkCache = new Map<string, bigint>();
-
-async function loadLookupCache() {
-  const rows = await prisma.lookupDtl.findMany({
-    include: { lookupMst: true, productType: true },
-  });
-  lkCache.clear();
-  for (const r of rows) {
-    const key = r.productType
-      ? `${r.lookupMst.code}:${r.code}:${r.productType.code}`
-      : `${r.lookupMst.code}:${r.code}`;
-    lkCache.set(key, r.id);
-  }
-}
-
-/** Resolve a lookup_dtl.id. With `pt`, a product-type-specific value wins over the global one. */
-function lk(group: string, code: string, pt?: string): bigint {
-  const id =
-    (pt ? lkCache.get(`${group}:${code}:${pt}`) : undefined) ??
-    lkCache.get(`${group}:${code}`);
-  if (id === undefined)
-    throw new Error(
-      `Lookup not found: ${group}/${code}${pt ? ` (product type ${pt})` : ''}`,
-    );
-  return id;
-}
-
-async function ensureLookup(
-  group: string,
+/** Compact group builder. `usedBy` is stored in lookup_mst.description for documentation. */
+const g = (
+  code: string,
   name: string,
+  usedBy: string,
   values: LV[],
-  productTypeId: bigint | null = null,
-) {
-  const mst = await prisma.lookupMst.upsert({
-    where: { code: group },
-    update: { name, isActive: true },
-    create: { code: group, name, isSystem: true, isActive: true },
-  });
-  let order = 10;
-  for (const [code, label, meta] of values) {
-    const found = await prisma.lookupDtl.findFirst({
-      where: { lookupMstId: mst.id, productTypeId, code },
-    });
-    const metaPart = meta ? { metadata: meta } : {};
-    if (found)
-      await prisma.lookupDtl.update({
-        where: { id: found.id },
-        data: { label, sortOrder: order, isActive: true, ...metaPart },
-      });
-    else
-      await prisma.lookupDtl.create({
-        data: {
-          lookupMstId: mst.id,
-          productTypeId,
-          code,
-          label,
-          sortOrder: order,
-          isSystem: true,
-          isActive: true,
-          ...metaPart,
-        },
-      });
-    order += 10;
-  }
-}
+  isSystem = true,
+): LookupGroup => ({
+  code,
+  name,
+  description: `Used by ${usedBy}`,
+  isSystem,
+  values,
+});
 
-// ---- booking statuses are shared by the lookup seed and the workflow seed ----
+const TERM: Json = { isTerminal: true };
+
+// ---------------------------------------------------------------------------
+// Booking statuses are shared by the lookup seed AND the workflow seed in seed.ts
+// ---------------------------------------------------------------------------
 const BOOKING_STATUSES: [string, boolean][] = [
   ['HELD', false],
   ['PAID', false],
@@ -135,289 +96,333 @@ const STD_LABELS: Record<string, string> = {
   REFUNDED: 'Refunded',
   NO_SHOW: 'No-show',
 };
+const BOOKING_COLORS: Record<string, string> = {
+  HELD: '#F59E0B',
+  PAID: '#3B82F6',
+  CONFIRMED: '#10B981',
+  BOARDED: '#06B6D4',
+  COMPLETED: '#059669',
+  EXPIRED: '#9CA3AF',
+  CANCELLED: '#EF4444',
+  REFUND_PENDING: '#F97316',
+  REFUNDED: '#6B7280',
+  NO_SHOW: '#B91C1C',
+};
 
+// country: [iso2, name, iso3, dial code]
+const COUNTRIES: [string, string, string, string][] = [
+  ['BD', 'Bangladesh', 'BGD', '+880'],
+  ['IN', 'India', 'IND', '+91'],
+  ['PK', 'Pakistan', 'PAK', '+92'],
+  ['NP', 'Nepal', 'NPL', '+977'],
+  ['LK', 'Sri Lanka', 'LKA', '+94'],
+  ['BT', 'Bhutan', 'BTN', '+975'],
+  ['MM', 'Myanmar', 'MMR', '+95'],
+  ['MV', 'Maldives', 'MDV', '+960'],
+  ['US', 'United States', 'USA', '+1'],
+  ['GB', 'United Kingdom', 'GBR', '+44'],
+  ['CA', 'Canada', 'CAN', '+1'],
+  ['AU', 'Australia', 'AUS', '+61'],
+  ['SA', 'Saudi Arabia', 'SAU', '+966'],
+  ['AE', 'United Arab Emirates', 'ARE', '+971'],
+  ['QA', 'Qatar', 'QAT', '+974'],
+  ['KW', 'Kuwait', 'KWT', '+965'],
+  ['OM', 'Oman', 'OMN', '+968'],
+  ['BH', 'Bahrain', 'BHR', '+973'],
+  ['MY', 'Malaysia', 'MYS', '+60'],
+  ['SG', 'Singapore', 'SGP', '+65'],
+  ['TH', 'Thailand', 'THA', '+66'],
+  ['ID', 'Indonesia', 'IDN', '+62'],
+  ['JP', 'Japan', 'JPN', '+81'],
+  ['CN', 'China', 'CHN', '+86'],
+  ['KR', 'South Korea', 'KOR', '+82'],
+  ['TR', 'Turkey', 'TUR', '+90'],
+  ['DE', 'Germany', 'DEU', '+49'],
+  ['FR', 'France', 'FRA', '+33'],
+  ['IT', 'Italy', 'ITA', '+39'],
+  ['ES', 'Spain', 'ESP', '+34'],
+  ['NL', 'Netherlands', 'NLD', '+31'],
+];
+
+// timezone: [IANA, label, utc offset]
+const TIMEZONES: [string, string, string][] = [
+  ['Asia/Dhaka', 'Dhaka (GMT+6)', '+06:00'],
+  ['Asia/Kolkata', 'Kolkata (GMT+5:30)', '+05:30'],
+  ['Asia/Karachi', 'Karachi (GMT+5)', '+05:00'],
+  ['Asia/Kathmandu', 'Kathmandu (GMT+5:45)', '+05:45'],
+  ['Asia/Colombo', 'Colombo (GMT+5:30)', '+05:30'],
+  ['Asia/Thimphu', 'Thimphu (GMT+6)', '+06:00'],
+  ['Asia/Riyadh', 'Riyadh (GMT+3)', '+03:00'],
+  ['Asia/Dubai', 'Dubai (GMT+4)', '+04:00'],
+  ['Asia/Doha', 'Doha (GMT+3)', '+03:00'],
+  ['Asia/Kuala_Lumpur', 'Kuala Lumpur (GMT+8)', '+08:00'],
+  ['Asia/Singapore', 'Singapore (GMT+8)', '+08:00'],
+  ['Asia/Bangkok', 'Bangkok (GMT+7)', '+07:00'],
+  ['Asia/Tokyo', 'Tokyo (GMT+9)', '+09:00'],
+  ['Europe/London', 'London', '+00:00'],
+  ['Europe/Berlin', 'Berlin', '+01:00'],
+  ['America/New_York', 'New York', '-05:00'],
+  ['UTC', 'UTC', '+00:00'],
+];
+
+// ===========================================================================
+// GLOBAL LOOKUP GROUPS (lookup_dtl.product_type_id = NULL)
+// ===========================================================================
 const GLOBAL_LOOKUPS: LookupGroup[] = [
   // ---------------- Cluster A: tenancy & access ----------------
-  {
-    code: 'TENANT_STATUS',
-    name: 'Tenant status',
-    values: [
-      ['PENDING', 'Pending'],
-      ['ACTIVE', 'Active'],
-      ['SUSPENDED', 'Suspended'],
-      ['TERMINATED', 'Terminated'],
-    ],
-  },
-  {
-    code: 'PAYMENT_MODEL',
-    name: 'Tenant payment model',
-    values: [
-      ['PREPAID', 'Prepaid'],
-      ['POSTPAID', 'Postpaid'],
-    ],
-  },
-  {
-    code: 'AGENT_STATUS',
-    name: 'Agent status',
-    values: [
-      ['ACTIVE', 'Active'],
-      ['SUSPENDED', 'Suspended'],
-      ['INACTIVE', 'Inactive'],
-    ],
-  },
-  {
-    code: 'STAFF_STATUS',
-    name: 'Staff user status',
-    values: [
-      ['INVITED', 'Invited'],
-      ['ACTIVE', 'Active'],
-      ['SUSPENDED', 'Suspended'],
-      ['LOCKED', 'Locked'],
-      ['DISABLED', 'Disabled'],
-    ],
-  },
-  {
-    code: 'MEMBERSHIP_STATUS',
-    name: 'Membership status',
-    values: [
-      ['INVITED', 'Invited'],
-      ['ACTIVE', 'Active'],
-      ['SUSPENDED', 'Suspended'],
-      ['REVOKED', 'Revoked'],
-    ],
-  },
-  {
-    code: 'AUTH_PROVIDER',
-    name: 'Federated login provider',
-    values: [
+  g('TENANT_STATUS', 'Tenant status', 'tenant.status_id', [
+    ['APPLIED', 'Applied'],
+    ['PENDING', 'Pending'],
+    ['UNDER_REVIEW', 'Under review'],
+    ['ACTIVE', 'Active'],
+    ['SUSPENDED', 'Suspended'],
+    ['TERMINATED', 'Terminated', TERM],
+  ]),
+  g('PAYMENT_MODEL', 'Tenant payment model', 'tenant.payment_model_id', [
+    ['PREPAID', 'Prepaid'],
+    ['POSTPAID', 'Postpaid'],
+    ['TENANT_COLLECT', 'Tenant collect'],
+    ['PLATFORM_COLLECT', 'Platform collect'],
+  ]),
+  g('AGENT_STATUS', 'Agent status', 'agent.status_id', [
+    ['ACTIVE', 'Active'],
+    ['SUSPENDED', 'Suspended'],
+    ['INACTIVE', 'Inactive'],
+  ]),
+  g('STAFF_STATUS', 'Staff user status', 'staff_user.status_id', [
+    ['INVITED', 'Invited'],
+    ['ACTIVE', 'Active'],
+    ['SUSPENDED', 'Suspended'],
+    ['LOCKED', 'Locked'],
+    ['DISABLED', 'Disabled'],
+  ]),
+  g('MEMBERSHIP_STATUS', 'Membership status', 'membership.status_id', [
+    ['INVITED', 'Invited'],
+    ['ACTIVE', 'Active'],
+    ['SUSPENDED', 'Suspended'],
+    ['REVOKED', 'Revoked', TERM],
+  ]),
+  g(
+    'AUTH_PROVIDER',
+    'Federated login provider',
+    'staff_federated_identity.provider_id, customer_federated_identity.provider_id',
+    [
       ['GOOGLE', 'Google'],
       ['FACEBOOK', 'Facebook'],
       ['APPLE', 'Apple'],
       ['MICROSOFT', 'Microsoft'],
     ],
-  },
-  {
-    code: 'KYC_TYPE',
-    name: 'KYC type',
-    values: [
-      ['STAFF', 'Staff'],
-      ['TENANT', 'Tenant (business)'],
-      ['CUSTOMER', 'Customer'],
-    ],
-  },
-  {
-    code: 'KYC_ID_TYPE',
-    name: 'KYC ID type',
-    values: [
-      ['NID', 'National ID'],
-      ['PASSPORT', 'Passport'],
-      ['DRIVING_LICENSE', 'Driving license'],
-      ['TRADE_LICENSE', 'Trade license'],
-      ['TIN', 'Tax identification number'],
-    ],
-  },
-  {
-    code: 'KYC_STATUS',
-    name: 'KYC status',
-    values: [
-      ['PENDING', 'Pending'],
-      ['VERIFIED', 'Verified'],
-      ['REJECTED', 'Rejected'],
-      ['RESUBMIT_REQUIRED', 'Resubmit required'],
-    ],
-  },
-  {
-    code: 'APPROVAL_ACTION_TYPE',
-    name: 'Approval action type',
-    values: [
+  ),
+  g('KYC_TYPE', 'KYC type', 'kyc_submission.kyc_type_id', [
+    ['STAFF', 'Staff'],
+    ['TENANT', 'Tenant (business)'],
+    ['CUSTOMER', 'Customer'],
+  ]),
+  g('KYC_ID_TYPE', 'KYC ID type', 'kyc_submission.id_type_id', [
+    ['NID', 'National ID'],
+    ['PASSPORT', 'Passport'],
+    ['DRIVING_LICENSE', 'Driving license'],
+    ['TRADE_LICENSE', 'Trade license'],
+    ['TIN', 'Tax identification number'],
+  ]),
+  g('KYC_STATUS', 'KYC status', 'kyc_submission.status_id', [
+    ['PENDING', 'Pending'],
+    ['VERIFIED', 'Verified', TERM],
+    ['REJECTED', 'Rejected', TERM],
+    ['RESUBMIT_REQUIRED', 'Resubmit required'],
+  ]),
+  g(
+    'APPROVAL_ACTION_TYPE',
+    'Approval action type',
+    'approval_request.action_type_id',
+    [
       ['REFUND_OVER_LIMIT', 'Refund over limit'],
       ['FARE_CHANGE', 'Fare change'],
       ['LAYOUT_PUBLISH', 'Layout publish'],
       ['RULE_CHANGE', 'Rule change'],
       ['ALLOCATION_CHANGE_NEAR_DEPARTURE', 'Allocation change near departure'],
       ['PAYOUT_APPROVAL', 'Payout approval'],
+      ['AGENT_CREDIT_LIMIT_CHANGE', 'Agent credit limit change'],
+      ['KYC_OVERRIDE', 'KYC override'],
     ],
-  },
-  {
-    code: 'APPROVAL_STATUS',
-    name: 'Approval status',
-    values: [
-      ['PENDING', 'Pending'],
-      ['APPROVED', 'Approved'],
-      ['REJECTED', 'Rejected'],
-      ['CANCELLED', 'Cancelled'],
-    ],
-  },
-  {
-    code: 'ACTOR_TYPE',
-    name: 'Audit actor type',
-    values: [
-      ['STAFF', 'Staff'],
-      ['CUSTOMER', 'Customer'],
-      ['SYSTEM', 'System'],
-      ['API', 'API client'],
-    ],
-  },
-  {
-    code: 'AUDIT_ACTION',
-    name: 'Audit action',
-    values: [
-      ['CREATE', 'Create'],
-      ['UPDATE', 'Update'],
-      ['DELETE', 'Delete'],
-      ['LOGIN', 'Login'],
-      ['LOGOUT', 'Logout'],
-      ['APPROVE', 'Approve'],
-      ['REJECT', 'Reject'],
-      ['TENANT_CREATE', 'Tenant created'],
-      ['TENANT_SUSPEND', 'Tenant suspended'],
-    ],
-  },
-  {
-    code: 'ENTITY_TYPE',
-    name: 'Entity type',
-    values: [
+  ),
+  g('APPROVAL_STATUS', 'Approval status', 'approval_request.status_id', [
+    ['PENDING', 'Pending'],
+    ['APPROVED', 'Approved', TERM],
+    ['REJECTED', 'Rejected', TERM],
+    ['CANCELLED', 'Cancelled', TERM],
+  ]),
+  g('ACTOR_TYPE', 'Audit actor type', 'audit_log.actor_type_id', [
+    ['STAFF', 'Staff'],
+    ['CUSTOMER', 'Customer'],
+    ['SYSTEM', 'System'],
+    ['API', 'API client'],
+  ]),
+  g('AUDIT_ACTION', 'Audit action', 'audit_log.action_id', [
+    ['CREATE', 'Create'],
+    ['UPDATE', 'Update'],
+    ['DELETE', 'Delete'],
+    ['LOGIN', 'Login'],
+    ['LOGIN_FAILED', 'Login failed'],
+    ['LOGOUT', 'Logout'],
+    ['PASSWORD_CHANGE', 'Password changed'],
+    ['APPROVE', 'Approve'],
+    ['REJECT', 'Reject'],
+    ['PUBLISH', 'Publish'],
+    ['CANCEL', 'Cancel'],
+    ['REFUND', 'Refund'],
+    ['ALLOCATE', 'Allocate / reallocate'],
+    ['EXPORT', 'Export'],
+    ['TENANT_CREATE', 'Tenant created'],
+    ['TENANT_ACTIVATE', 'Tenant activated'],
+    ['TENANT_SUSPEND', 'Tenant suspended'],
+    ['TENANT_TERMINATE', 'Tenant terminated'],
+    ['KYC_SUBMIT', 'KYC submitted'],
+    ['KYC_VERIFY', 'KYC verified'],
+    ['KYC_REJECT', 'KYC rejected'],
+  ]),
+  g(
+    'ENTITY_TYPE',
+    'Entity type',
+    'audit_log.entity_type_id, attribute_definition.entity_type_id, external_mapping.entity_type_id',
+    [
       ['TENANT', 'Tenant'],
+      ['PLAN', 'Plan'],
       ['STAFF_USER', 'Staff user'],
+      ['MEMBERSHIP', 'Membership'],
+      ['ROLE', 'Role'],
+      ['PERMISSION', 'Permission'],
       ['BRANCH', 'Branch'],
       ['AGENT', 'Agent'],
+      ['KYC_SUBMISSION', 'KYC submission'],
+      ['APPROVAL_REQUEST', 'Approval request'],
+      ['TENANT_SETTING', 'Tenant setting'],
+      ['API_KEY', 'API key'],
+      ['WEBHOOK_ENDPOINT', 'Webhook endpoint'],
       ['CUSTOMER_PROFILE', 'Customer profile'],
+      ['SAVED_TRAVELER', 'Saved traveler'],
       ['TRAVELER', 'Traveler'],
-      ['OFFERING', 'Offering'],
-      ['RESOURCE', 'Resource'],
-      ['SERVICE_LINE', 'Service line'],
+      ['PRODUCT_TYPE', 'Product type'],
+      ['ATTRIBUTE_DEFINITION', 'Attribute definition'],
+      ['POLICY_DEFINITION', 'Policy definition'],
+      ['WORKFLOW', 'Workflow'],
+      ['TEMPLATE', 'Template'],
+      ['LOOKUP', 'Lookup value'],
       ['LOCATION', 'Location'],
+      ['OFFERING', 'Offering'],
       ['LAYOUT_TEMPLATE', 'Layout template'],
+      ['RESOURCE', 'Resource'],
+      ['RESOURCE_DOCUMENT', 'Resource document'],
+      ['SERVICE_LINE', 'Service line'],
+      ['FARE_RULE', 'Fare rule'],
+      ['ANCILLARY_PRODUCT', 'Ancillary product'],
+      ['ANCILLARY_OFFER', 'Ancillary offer'],
+      ['RULE', 'Rule'],
       ['TRIP', 'Trip'],
       ['TRIP_UNIT', 'Trip unit'],
+      ['HOLD', 'Hold'],
+      ['ALLOCATION_RULE', 'Allocation rule'],
+      ['TRIP_CHANGE', 'Trip change'],
       ['BOOKING', 'Booking'],
       ['BOOKING_ITEM', 'Booking item'],
       ['TICKET', 'Ticket'],
       ['PAYMENT', 'Payment'],
       ['REFUND', 'Refund'],
       ['PROMO', 'Promo'],
+      ['WALLET_ACCOUNT', 'Wallet account'],
+      ['LEDGER_ENTRY', 'Ledger entry'],
       ['SETTLEMENT', 'Settlement'],
-      ['RULE', 'Rule'],
-      ['FARE_RULE', 'Fare rule'],
-      ['ROLE', 'Role'],
       ['SUPPLIER_CONNECTION', 'Supplier connection'],
       ['CREW_MEMBER', 'Crew member'],
+      ['CREW_DOCUMENT', 'Crew document'],
+      ['CREW_LEAVE', 'Crew leave'],
+      ['TRIP_CREW', 'Trip crew assignment'],
     ],
-  },
-  {
-    code: 'SCOPE_TYPE',
-    name: 'Scope type',
-    values: [
+  ),
+  g(
+    'SCOPE_TYPE',
+    'Scope type',
+    'tenant_setting, rule, ancillary_offer, allocation_rule .scope_type_id; policy_definition.allowed_scope_ids',
+    [
       ['PLATFORM', 'Platform'],
       ['TENANT', 'Tenant'],
       ['BRANCH', 'Branch'],
       ['AGENT', 'Agent'],
+      ['PRODUCT_TYPE', 'Product type'],
       ['SERVICE_LINE', 'Service line'],
       ['OFFERING', 'Offering'],
+      ['RESOURCE', 'Resource'],
       ['TRIP', 'Trip'],
     ],
-  },
+  ),
 
   // ---------------- Cluster B: customers & integration ----------------
-  {
-    code: 'GENDER',
-    name: 'Gender',
-    values: [
-      ['MALE', 'Male'],
-      ['FEMALE', 'Female'],
-      ['OTHER', 'Other'],
+  g('GENDER', 'Gender', 'saved_traveler.gender_id, traveler.gender_id', [
+    ['MALE', 'Male'],
+    ['FEMALE', 'Female'],
+    ['OTHER', 'Other'],
+  ]),
+  g(
+    'COUNTRY',
+    'Country (ISO 3166-1 alpha-2)',
+    'nationality_id / country_id on traveler, saved_traveler and document tables',
+    COUNTRIES.map(
+      ([c, n, iso3, dial]) => [c, n, { iso3, dialCode: dial }] as LV,
+    ),
+    false,
+  ),
+  g(
+    'TRAVELER_TYPE',
+    'Traveler type',
+    'saved_traveler.traveler_type_id, traveler.type_id',
+    [
+      ['ADULT', 'Adult', { minAge: 12, maxAge: 59 }],
+      ['CHILD', 'Child', { minAge: 2, maxAge: 11 }],
+      ['INFANT', 'Infant', { minAge: 0, maxAge: 1 }],
+      ['SENIOR', 'Senior citizen', { minAge: 60 }],
     ],
-  },
-  {
-    code: 'COUNTRY',
-    name: 'Country (ISO 3166-1 alpha-2)',
-    values: [
-      ['BD', 'Bangladesh'],
-      ['IN', 'India'],
-      ['PK', 'Pakistan'],
-      ['NP', 'Nepal'],
-      ['LK', 'Sri Lanka'],
-      ['BT', 'Bhutan'],
-      ['MM', 'Myanmar'],
-      ['MV', 'Maldives'],
-      ['US', 'United States'],
-      ['GB', 'United Kingdom'],
-      ['CA', 'Canada'],
-      ['AU', 'Australia'],
-      ['SA', 'Saudi Arabia'],
-      ['AE', 'United Arab Emirates'],
-      ['QA', 'Qatar'],
-      ['KW', 'Kuwait'],
-      ['OM', 'Oman'],
-      ['BH', 'Bahrain'],
-      ['MY', 'Malaysia'],
-      ['SG', 'Singapore'],
-      ['TH', 'Thailand'],
-      ['JP', 'Japan'],
-      ['CN', 'China'],
-      ['KR', 'South Korea'],
-      ['DE', 'Germany'],
-      ['FR', 'France'],
-      ['IT', 'Italy'],
-    ],
-  },
-  {
-    code: 'TRAVELER_TYPE',
-    name: 'Traveler type',
-    values: [
-      ['ADULT', 'Adult'],
-      ['CHILD', 'Child'],
-      ['INFANT', 'Infant'],
-      ['SENIOR', 'Senior citizen'],
-    ],
-  },
-  {
-    code: 'DOCUMENT_TYPE',
-    name: 'Traveler document type',
-    values: [
+  ),
+  g(
+    'DOCUMENT_TYPE',
+    'Traveler document type',
+    'saved_traveler_document.doc_type_id, traveler_document.doc_type_id',
+    [
       ['NID', 'National ID'],
       ['PASSPORT', 'Passport'],
       ['BIRTH_CERTIFICATE', 'Birth certificate'],
+      ['DRIVING_LICENSE', 'Driving license'],
     ],
-  },
-  {
-    code: 'API_KEY_TYPE',
-    name: 'API key type',
-    values: [
-      ['PUBLISHABLE', 'Publishable (client-side)'],
-      ['SECRET', 'Secret (server-side)'],
-      ['AGENT', 'Agent key'],
-    ],
-  },
-  {
-    code: 'API_SCOPE',
-    name: 'API scope',
-    values: [
-      ['TRIP_READ', 'Read trips and availability'],
-      ['BOOKING_READ', 'Read bookings'],
-      ['BOOKING_WRITE', 'Create and modify bookings'],
-      ['PAYMENT_READ', 'Read payments'],
-      ['TICKET_READ', 'Read tickets'],
-      ['WEBHOOK_MANAGE', 'Manage webhooks'],
-    ],
-  },
-  {
-    code: 'EVENT_TOPIC',
-    name: 'Event topic',
-    values: [
-      ['BOOKING', 'Booking'],
-      ['PAYMENT', 'Payment'],
-      ['TICKET', 'Ticket'],
-      ['TRIP', 'Trip'],
-      ['REFUND', 'Refund'],
-      ['SETTLEMENT', 'Settlement'],
-      ['NOTIFICATION', 'Notification'],
-    ],
-  },
-  {
-    code: 'EVENT_TYPE',
-    name: 'Event type',
-    values: [
+  ),
+  g('API_KEY_TYPE', 'API key type', 'api_key.key_type_id', [
+    ['PUBLISHABLE', 'Publishable (client-side)'],
+    ['SECRET', 'Secret (server-side)'],
+    ['AGENT', 'Agent key'],
+  ]),
+  g('API_SCOPE', 'API scope', 'api_key.scope_ids[]', [
+    ['TRIP_READ', 'Read trips and availability'],
+    ['HOLD_WRITE', 'Create and release holds'],
+    ['BOOKING_READ', 'Read bookings'],
+    ['BOOKING_WRITE', 'Create and modify bookings'],
+    ['PAYMENT_READ', 'Read payments'],
+    ['TICKET_READ', 'Read tickets'],
+    ['REFUND_WRITE', 'Request refunds'],
+    ['WEBHOOK_MANAGE', 'Manage webhooks'],
+  ]),
+  g('EVENT_TOPIC', 'Event topic', 'outbox_event.topic_id', [
+    ['BOOKING', 'Booking'],
+    ['PAYMENT', 'Payment'],
+    ['TICKET', 'Ticket'],
+    ['TRIP', 'Trip'],
+    ['REFUND', 'Refund'],
+    ['SETTLEMENT', 'Settlement'],
+    ['KYC', 'KYC'],
+    ['NOTIFICATION', 'Notification'],
+  ]),
+  g(
+    'EVENT_TYPE',
+    'Event type',
+    'outbox_event.event_type_id, template.event_type_id, webhook_endpoint.event_type_ids[]',
+    [
       ['OTP_LOGIN', 'OTP login'],
       ['BOOKING_HELD', 'Booking held'],
       ['BOOKING_EXPIRED', 'Booking expired'],
@@ -426,38 +431,38 @@ const GLOBAL_LOOKUPS: LookupGroup[] = [
       ['PAYMENT_CAPTURED', 'Payment captured'],
       ['PAYMENT_FAILED', 'Payment failed'],
       ['TICKET_ISSUED', 'Ticket issued'],
+      ['TICKET_VOIDED', 'Ticket voided'],
       ['REFUND_PROCESSED', 'Refund processed'],
+      ['TRIP_OPENED', 'Trip opened for sale'],
       ['TRIP_DELAYED', 'Trip delayed'],
       ['TRIP_CANCELLED', 'Trip cancelled'],
       ['TRIP_DEPARTED', 'Trip departed'],
+      ['TRIP_COMPLETED', 'Trip completed'],
+      ['SETTLEMENT_APPROVED', 'Settlement approved'],
       ['SETTLEMENT_PAID', 'Settlement paid'],
+      ['KYC_VERIFIED', 'KYC verified'],
+      ['KYC_REJECTED', 'KYC rejected'],
     ],
-  },
-  {
-    code: 'OUTBOX_STATUS',
-    name: 'Outbox event status',
-    values: [
-      ['PENDING', 'Pending'],
-      ['PROCESSING', 'Processing'],
-      ['SENT', 'Sent'],
-      ['FAILED', 'Failed'],
-    ],
-  },
+  ),
+  g('OUTBOX_STATUS', 'Outbox event status', 'outbox_event.status_id', [
+    ['PENDING', 'Pending'],
+    ['PROCESSING', 'Processing'],
+    ['SENT', 'Sent', TERM],
+    ['FAILED', 'Failed'],
+    ['DEAD_LETTER', 'Dead letter', TERM],
+  ]),
 
   // ---------------- Cluster C: registries & rules ----------------
-  {
-    code: 'INVENTORY_MODEL',
-    name: 'Inventory model',
-    values: [
-      ['SEATED', 'Seated'],
-      ['HYBRID', 'Hybrid'],
-      ['COUNTED', 'Counted'],
-    ],
-  },
-  {
-    code: 'DATA_TYPE',
-    name: 'Data type',
-    values: [
+  g('INVENTORY_MODEL', 'Inventory model', 'product_type.inventory_model_id', [
+    ['SEATED', 'Seated'],
+    ['HYBRID', 'Hybrid'],
+    ['COUNTED', 'Counted'],
+  ]),
+  g(
+    'DATA_TYPE',
+    'Data type',
+    'attribute_definition.data_type_id, policy_definition.value_type_id',
+    [
       ['STRING', 'String'],
       ['NUMBER', 'Number'],
       ['INTEGER', 'Integer'],
@@ -467,100 +472,83 @@ const GLOBAL_LOOKUPS: LookupGroup[] = [
       ['ENUM', 'Enum'],
       ['JSON', 'JSON'],
     ],
-  },
-  {
-    code: 'VISIBILITY',
-    name: 'Attribute visibility',
-    values: [
+  ),
+  g(
+    'VISIBILITY',
+    'Attribute visibility',
+    'attribute_definition.visibility_id',
+    [
       ['PUBLIC', 'Public'],
       ['INTERNAL_ONLY', 'Internal only'],
       ['MASKED', 'Masked'],
     ],
-  },
-  {
-    code: 'RULE_TYPE',
-    name: 'Rule type',
-    values: [
-      ['FEE', 'Fee'],
-      ['PRICE', 'Price'],
-      ['REFUND', 'Refund'],
-      ['ELIGIBILITY', 'Eligibility'],
-      ['VALIDATION', 'Validation'],
-      ['QUOTA', 'Quota'],
+  ),
+  g('RULE_TYPE', 'Rule type', 'rule.rule_type_id', [
+    ['FEE', 'Fee'],
+    ['PRICE', 'Price'],
+    ['REFUND', 'Refund'],
+    ['ELIGIBILITY', 'Eligibility'],
+    ['VALIDATION', 'Validation'],
+    ['QUOTA', 'Quota'],
+  ]),
+  g('TEMPLATE_TYPE', 'Template type', 'template.template_type_id', [
+    ['SMS', 'SMS'],
+    ['EMAIL', 'Email'],
+    ['PUSH', 'Push notification'],
+    ['TICKET_PDF', 'Ticket PDF'],
+    ['INVOICE_PDF', 'Invoice PDF'],
+  ]),
+  g(
+    'LOCALE',
+    'Locale',
+    'template.locale_id',
+    [
+      ['en_US', 'English', { language: 'en', rtl: false }],
+      ['bn_BD', 'বাংলা (Bangla)', { language: 'bn', rtl: false }],
+      ['ar_SA', 'العربية (Arabic)', { language: 'ar', rtl: true }],
     ],
-  },
-  {
-    code: 'TEMPLATE_TYPE',
-    name: 'Template type',
-    values: [
-      ['SMS', 'SMS'],
-      ['EMAIL', 'Email'],
-      ['TICKET_PDF', 'Ticket PDF'],
-      ['INVOICE_PDF', 'Invoice PDF'],
-    ],
-  },
-  {
-    code: 'LOCALE',
-    name: 'Locale',
-    values: [
-      ['en_US', 'English'],
-      ['bn_BD', 'বাংলা (Bangla)'],
-      ['ar_SA', 'العربية (Arabic)'],
-    ],
-  },
-  {
-    code: 'TIMEZONE',
-    name: 'Timezone (IANA)',
-    values: [
-      ['Asia/Dhaka', 'Dhaka (GMT+6)'],
-      ['Asia/Kolkata', 'Kolkata (GMT+5:30)'],
-      ['Asia/Riyadh', 'Riyadh (GMT+3)'],
-      ['Asia/Dubai', 'Dubai (GMT+4)'],
-      ['Asia/Kuala_Lumpur', 'Kuala Lumpur (GMT+8)'],
-      ['Europe/London', 'London'],
-      ['America/New_York', 'New York'],
-      ['UTC', 'UTC'],
-    ],
-  },
+    false,
+  ),
+  g(
+    'TIMEZONE',
+    'Timezone (IANA)',
+    'location.timezone_id',
+    TIMEZONES.map(([c, l, off]) => [c, l, { utcOffset: off }] as LV),
+    false,
+  ),
 
   // ---------------- Cluster D: catalog ----------------
-  {
-    code: 'LOCATION_TYPE',
-    name: 'Location type',
-    values: [
-      ['CITY', 'City'],
-      ['TERMINAL', 'Terminal'],
-      ['STOP', 'Stop'],
-      ['AIRPORT', 'Airport'],
-      ['STATION', 'Station'],
-      ['PORT', 'Port'],
-    ],
-  },
-  {
-    code: 'SELECTION_MODE',
-    name: 'Offering selection mode',
-    values: [
-      ['SEAT_SELECT', 'Customer selects seat'],
-      ['AUTO_ASSIGN', 'Auto assign'],
-      ['QUANTITY_ONLY', 'Quantity only'],
-    ],
-  },
-  {
-    code: 'LAYOUT_STATUS',
-    name: 'Layout template status',
-    values: [
-      ['DRAFT', 'Draft'],
-      ['PUBLISHED', 'Published'],
-      ['ARCHIVED', 'Archived'],
-    ],
-  },
-  {
-    code: 'CELL_TYPE',
-    name: 'Layout cell type',
-    values: [
+  g('LOCATION_TYPE', 'Location type', 'location.location_type_id', [
+    ['CITY', 'City'],
+    ['TERMINAL', 'Terminal'],
+    ['STOP', 'Stop'],
+    ['AIRPORT', 'Airport'],
+    ['STATION', 'Station'],
+    ['PORT', 'Port'],
+    ['VENUE', 'Venue'],
+    ['ATTRACTION', 'Attraction'],
+  ]),
+  g('SELECTION_MODE', 'Offering selection mode', 'offering.selection_mode_id', [
+    ['SEAT_SELECT', 'Customer selects seat'],
+    ['AUTO_ASSIGN', 'Auto assign'],
+    ['QUANTITY_ONLY', 'Quantity only'],
+  ]),
+  g('LAYOUT_STATUS', 'Layout template status', 'layout_template.status_id', [
+    ['DRAFT', 'Draft'],
+    ['PUBLISHED', 'Published'],
+    ['ARCHIVED', 'Archived', TERM],
+  ]),
+  g(
+    'CELL_TYPE',
+    'Layout cell type',
+    'layout_cell.cell_type_id, trip_unit.cell_type_id',
+    [
       ['SEAT', 'Seat'],
       ['BERTH', 'Berth'],
       ['DOUBLE_BERTH', 'Double berth'],
+      ['CABIN', 'Cabin'],
+      ['STANDING_ZONE', 'Standing zone'],
+      ['DECK_AREA', 'Deck area'],
       ['AISLE', 'Aisle'],
       ['DRIVER', 'Driver'],
       ['DOOR', 'Door'],
@@ -568,118 +556,112 @@ const GLOBAL_LOOKUPS: LookupGroup[] = [
       ['TOILET', 'Toilet'],
       ['LUGGAGE', 'Luggage'],
     ],
-  },
-  {
-    code: 'UNIT_TYPE',
-    name: 'Sellable unit type',
-    values: [
+  ),
+  g(
+    'UNIT_TYPE',
+    'Sellable unit type',
+    'layout_cell.unit_type_id, trip_unit.unit_type_id, allocation_rule.quota_unit_ids[]',
+    [
       ['SEAT_WINDOW', 'Window seat'],
       ['SEAT_AISLE', 'Aisle seat'],
+      ['SEAT_MIDDLE', 'Middle seat'],
+      ['SEAT_STANDARD', 'Standard seat'],
       ['SLEEPER_LOWER', 'Lower sleeper'],
       ['SLEEPER_UPPER', 'Upper sleeper'],
       ['CABIN', 'Cabin'],
+      ['DECK_PASSENGER', 'Deck passenger'],
+      ['STANDING', 'Standing admission'],
+      ['VIP_BOX', 'VIP box'],
+      ['TOUR_SLOT', 'Tour slot'],
     ],
-  },
-  {
-    code: 'POSITION',
-    name: 'Seat position',
-    values: [
-      ['WINDOW', 'Window'],
-      ['AISLE', 'Aisle'],
-      ['MIDDLE', 'Middle'],
-      ['FRONT', 'Front'],
-      ['REAR', 'Rear'],
-    ],
-  },
-  {
-    code: 'PRICE_TIER',
-    name: 'Seat price tier',
-    values: [
-      ['STANDARD', 'Standard'],
-      ['PREMIUM', 'Premium'],
-      ['FRONT_ROW', 'Front row'],
-      ['EXTRA_LEGROOM', 'Extra legroom'],
-      ['VIP', 'VIP'],
-    ],
-  },
-  {
-    code: 'SELL_MODE',
-    name: 'Sell mode',
-    values: [
-      ['WHOLE_ONLY', 'Whole unit only'],
-      ['PER_PERSON', 'Per person'],
-      ['EITHER', 'Either'],
-    ],
-  },
-  {
-    code: 'CELL_FLAG',
-    name: 'Layout cell flag',
-    values: [
-      ['LADIES', 'Ladies'],
-      ['ACCESSIBLE', 'Accessible'],
-      ['EXIT_ROW', 'Exit row'],
-      ['EXTRA_LEGROOM', 'Extra legroom'],
-      ['BLOCKED', 'Blocked'],
-      ['CREW_ONLY', 'Crew only'],
-    ],
-  },
-  {
-    code: 'RESOURCE_STATUS',
-    name: 'Resource status',
-    values: [
-      ['ACTIVE', 'Active'],
-      ['MAINTENANCE', 'Under maintenance'],
-      ['INACTIVE', 'Inactive'],
-      ['RETIRED', 'Retired'],
-    ],
-  },
-  {
-    code: 'RESOURCE_DOC_TYPE',
-    name: 'Resource document type',
-    values: [
+  ),
+  g('POSITION', 'Seat position', 'layout_cell.position_id', [
+    ['WINDOW', 'Window'],
+    ['AISLE', 'Aisle'],
+    ['MIDDLE', 'Middle'],
+    ['FRONT', 'Front'],
+    ['REAR', 'Rear'],
+  ]),
+  g('PRICE_TIER', 'Seat price tier', 'layout_cell.price_tier_id', [
+    ['STANDARD', 'Standard'],
+    ['PREMIUM', 'Premium'],
+    ['FRONT_ROW', 'Front row'],
+    ['EXTRA_LEGROOM', 'Extra legroom'],
+    ['VIP', 'VIP'],
+  ]),
+  g('SELL_MODE', 'Sell mode', 'layout_cell.sell_mode_id', [
+    ['WHOLE_ONLY', 'Whole unit only'],
+    ['PER_PERSON', 'Per person'],
+    ['EITHER', 'Either'],
+  ]),
+  g('CELL_FLAG', 'Layout cell flag', 'layout_cell.flag_ids[]', [
+    ['LADIES', 'Ladies'],
+    ['ACCESSIBLE', 'Accessible'],
+    ['EXIT_ROW', 'Exit row'],
+    ['EXTRA_LEGROOM', 'Extra legroom'],
+    ['BLOCKED', 'Blocked'],
+    ['CREW_ONLY', 'Crew only'],
+  ]),
+  g('RESOURCE_STATUS', 'Resource status', 'resource.status_id', [
+    ['ACTIVE', 'Active'],
+    ['MAINTENANCE', 'Under maintenance'],
+    ['INACTIVE', 'Inactive'],
+    ['RETIRED', 'Retired', TERM],
+  ]),
+  g(
+    'RESOURCE_DOC_TYPE',
+    'Resource document type',
+    'resource_document.doc_type_id',
+    [
+      ['REGISTRATION', 'Registration certificate'],
       ['FITNESS_CERT', 'Fitness certificate'],
       ['ROUTE_PERMIT', 'Route permit'],
       ['TAX_TOKEN', 'Tax token'],
       ['INSURANCE', 'Insurance'],
       ['SAFETY_CERT', 'Safety certificate'],
+      ['AIRWORTHINESS_CERT', 'Airworthiness certificate'],
     ],
-  },
-  {
-    code: 'SERVICE_LINE_STATUS',
-    name: 'Service line status',
-    values: [
-      ['DRAFT', 'Draft'],
-      ['ACTIVE', 'Active'],
-      ['INACTIVE', 'Inactive'],
-    ],
-  },
-  {
-    code: 'PRICE_COMPONENT_TYPE',
-    name: 'Fare / price component type',
-    values: [
+  ),
+  g('SERVICE_LINE_STATUS', 'Service line status', 'service_line.status_id', [
+    ['DRAFT', 'Draft'],
+    ['ACTIVE', 'Active'],
+    ['INACTIVE', 'Inactive'],
+  ]),
+  g(
+    'PRICE_COMPONENT_TYPE',
+    'Fare / price component type',
+    'fare_rule.component_type_id, booking_price_line.component_type_id',
+    [
       ['BASE', 'Base fare'],
       ['SEAT_TIER', 'Seat tier surcharge'],
       ['MODIFIER', 'Modifier'],
       ['DYNAMIC', 'Dynamic pricing'],
+      ['FEE', 'Service fee'],
       ['TAX', 'Tax'],
       ['DISCOUNT', 'Discount'],
     ],
-  },
-  {
-    code: 'ANCILLARY_CATEGORY',
-    name: 'Ancillary category',
-    values: [
+  ),
+  g(
+    'ANCILLARY_CATEGORY',
+    'Ancillary category',
+    'ancillary_product.category_id',
+    [
       ['BAGGAGE', 'Baggage'],
       ['MEAL', 'Meal'],
       ['INSURANCE', 'Insurance'],
       ['WIFI', 'Wi-Fi'],
       ['LOUNGE', 'Lounge access'],
+      ['PRIORITY_BOARDING', 'Priority boarding'],
+      ['TRANSFER', 'Transfer / pickup'],
+      ['OTHER', 'Other'],
     ],
-  },
-  {
-    code: 'OFFERING_FEATURE',
-    name: 'Offering feature',
-    values: [
+    false,
+  ),
+  g(
+    'OFFERING_FEATURE',
+    'Offering feature',
+    'offering_feature.feature_code (code reference, not an FK)',
+    [
       ['AC', 'Air conditioning'],
       ['WIFI', 'Wi-Fi'],
       ['CHARGING_PORT', 'Charging port'],
@@ -690,45 +672,41 @@ const GLOBAL_LOOKUPS: LookupGroup[] = [
       ['TOILET', 'Onboard toilet'],
       ['RECLINING_SEAT', 'Reclining seat'],
     ],
-  },
+    false,
+  ),
 
   // ---------------- Cluster E: operations & allocation ----------------
-  {
-    code: 'TRIP_STATUS',
-    name: 'Trip status',
-    values: [
-      ['SCHEDULED', 'Scheduled'],
-      ['OPEN', 'Open for sale'],
-      ['CLOSED', 'Sales closed'],
-      ['DEPARTED', 'Departed'],
-      ['COMPLETED', 'Completed'],
-      ['CANCELLED', 'Cancelled'],
-    ],
-  },
-  {
-    code: 'SUPPLY_MODE',
-    name: 'Supply mode',
-    values: [
+  g('TRIP_STATUS', 'Trip status', 'trip.status_id', [
+    ['SCHEDULED', 'Scheduled'],
+    ['OPEN', 'Open for sale'],
+    ['CLOSED', 'Sales closed'],
+    ['BOARDING', 'Boarding'],
+    ['DEPARTED', 'Departed'],
+    ['COMPLETED', 'Completed', TERM],
+    ['CANCELLED', 'Cancelled', TERM],
+  ]),
+  g(
+    'SUPPLY_MODE',
+    'Supply mode',
+    'trip.supply_mode_id, supplier_connection.supply_mode_id',
+    [
       ['PLATFORM_OWNED', 'Platform owned'],
       ['SUPPLIER_REALTIME', 'Supplier real-time'],
       ['SEAT_BLOCK', 'Seat block'],
     ],
-  },
-  {
-    code: 'TRIP_UNIT_STATUS',
-    name: 'Trip unit status',
-    values: [
-      ['AVAILABLE', 'Available'],
-      ['HELD', 'Held'],
-      ['SOLD', 'Sold'],
-      ['BLOCKED', 'Blocked'],
-      ['CREW', 'Crew'],
-    ],
-  },
-  {
-    code: 'ALLOCATION_POOL',
-    name: 'Inventory pool',
-    values: [
+  ),
+  g('TRIP_UNIT_STATUS', 'Trip unit status', 'trip_unit.status_id', [
+    ['AVAILABLE', 'Available'],
+    ['HELD', 'Held'],
+    ['SOLD', 'Sold'],
+    ['BLOCKED', 'Blocked'],
+    ['CREW', 'Crew'],
+  ]),
+  g(
+    'ALLOCATION_POOL',
+    'Inventory pool',
+    'trip_unit.pool_id, allocation_rule.pool_id / release_to_pool_id, allocation_event.from/to_pool_id',
+    [
       ['SHARED', 'Shared'],
       ['MARKETPLACE', 'Marketplace'],
       ['TENANT_WEB', 'Tenant website'],
@@ -738,321 +716,264 @@ const GLOBAL_LOOKUPS: LookupGroup[] = [
       ['HOLD', 'Hold'],
       ['CREW', 'Crew'],
     ],
-  },
-  {
-    code: 'ELIGIBILITY_LOCK',
-    name: 'Eligibility lock',
-    values: [
-      ['NONE', 'None'],
-      ['LADIES_ONLY', 'Ladies only'],
-      ['SENIOR_ONLY', 'Senior only'],
-      ['ACCESSIBLE', 'Accessible'],
-    ],
-  },
-  {
-    code: 'SPAN_TYPE',
-    name: 'Unit span type',
-    values: [
-      ['HOLD', 'Hold'],
-      ['BOOKING', 'Booking'],
-      ['BLOCK', 'Block'],
-    ],
-  },
-  {
-    code: 'HOLD_STATUS',
-    name: 'Hold status',
-    values: [
-      ['ACTIVE', 'Active'],
-      ['CONVERTED', 'Converted to booking'],
-      ['EXPIRED', 'Expired'],
-      ['RELEASED', 'Released'],
-    ],
-  },
-  {
-    code: 'SALES_CHANNEL',
-    name: 'Sales channel',
-    values: [
+  ),
+  g('ELIGIBILITY_LOCK', 'Eligibility lock', 'trip_unit.eligibility_lock_id', [
+    ['NONE', 'None'],
+    ['LADIES_ONLY', 'Ladies only'],
+    ['SENIOR_ONLY', 'Senior only'],
+    ['ACCESSIBLE', 'Accessible'],
+  ]),
+  g('SPAN_TYPE', 'Unit span type', 'unit_span.span_type_id', [
+    ['HOLD', 'Hold'],
+    ['BOOKING', 'Booking'],
+    ['BLOCK', 'Block'],
+  ]),
+  g('HOLD_STATUS', 'Hold status', 'hold.status_id', [
+    ['ACTIVE', 'Active'],
+    ['CONVERTED', 'Converted to booking', TERM],
+    ['EXPIRED', 'Expired', TERM],
+    ['RELEASED', 'Released', TERM],
+  ]),
+  g(
+    'SALES_CHANNEL',
+    'Sales channel',
+    'hold.channel_id, booking.sales_channel_id',
+    [
       ['MARKETPLACE', 'Marketplace'],
       ['TENANT_WEB', 'Tenant website'],
       ['COUNTER', 'Counter'],
       ['AGENT', 'Agent'],
       ['API', 'API'],
     ],
-  },
-  {
-    code: 'ALLOCATION_MODE',
-    name: 'Allocation mode',
-    values: [
+  ),
+  g(
+    'ALLOCATION_MODE',
+    'Allocation mode',
+    'allocation_rule.allocation_mode_id',
+    [
       ['FIXED', 'Fixed quota'],
       ['FLEXIBLE', 'Flexible quota'],
       ['RELEASE_ON_TIME', 'Release on time'],
     ],
-  },
-  {
-    code: 'TRIP_CHANGE_TYPE',
-    name: 'Trip change type',
-    values: [
-      ['DELAY', 'Delay'],
-      ['CANCEL', 'Cancellation'],
-      ['RESOURCE_SWAP', 'Vehicle / resource swap'],
-      ['SCHEDULE_CHANGE', 'Schedule change'],
-      ['CREW_CHANGE', 'Crew change'],
-    ],
-  },
+  ),
+  g('TRIP_CHANGE_TYPE', 'Trip change type', 'trip_change.change_type_id', [
+    ['DELAY', 'Delay'],
+    ['CANCEL', 'Cancellation'],
+    ['REINSTATE', 'Reinstated'],
+    ['RESOURCE_SWAP', 'Vehicle / resource swap'],
+    ['SCHEDULE_CHANGE', 'Schedule change'],
+    ['STOP_CHANGE', 'Stop change'],
+    ['PRICE_CHANGE', 'Price change'],
+    ['CREW_CHANGE', 'Crew change'],
+  ]),
 
   // ---------------- Cluster F: booking & money ----------------
-  {
-    code: 'BOOKING_STATUS',
-    name: 'Booking status',
-    values: BOOKING_STATUSES.map(
-      ([c, t]) => [c, STD_LABELS[c], { isTerminal: t }] as LV,
+  g(
+    'BOOKING_STATUS',
+    'Booking status',
+    'booking.status_id, workflow_status / workflow_transition',
+    BOOKING_STATUSES.map(
+      ([c, t]) =>
+        [c, STD_LABELS[c], { isTerminal: t, color: BOOKING_COLORS[c] }] as LV,
     ),
-  },
-  {
-    code: 'BOOKING_ITEM_TYPE',
-    name: 'Booking item type',
-    values: [
-      ['SEAT', 'Seat / unit'],
-      ['ANCILLARY', 'Ancillary'],
-      ['FEE', 'Fee'],
-    ],
-  },
-  {
-    code: 'BOOKING_ITEM_STATUS',
-    name: 'Booking item status',
-    values: [
-      ['ACTIVE', 'Active'],
-      ['BOARDED', 'Boarded'],
-      ['CANCELLED', 'Cancelled'],
-      ['REFUNDED', 'Refunded'],
-    ],
-  },
-  {
-    code: 'TICKET_STATUS',
-    name: 'Ticket status',
-    values: [
-      ['ISSUED', 'Issued'],
-      ['USED', 'Used'],
-      ['VOID', 'Void'],
-      ['REISSUED', 'Reissued'],
-      ['EXPIRED', 'Expired'],
-    ],
-  },
-  {
-    code: 'PAYMENT_METHOD',
-    name: 'Payment method',
-    values: [
-      ['BKASH', 'bKash'],
-      ['NAGAD', 'Nagad'],
-      ['ROCKET', 'Rocket'],
-      ['CREDIT_CARD', 'Credit card'],
-      ['DEBIT_CARD', 'Debit card'],
-      ['NET_BANKING', 'Net banking'],
-      ['IN_APP_WALLET', 'In-app wallet'],
-      ['COUNTER_CASH', 'Counter cash'],
-      ['AGENT_CREDIT', 'Agent credit'],
-    ],
-  },
-  {
-    code: 'PAYMENT_GATEWAY',
-    name: 'Payment gateway',
-    values: [
-      ['SSLCOMMERZ', 'SSLCommerz'],
-      ['BKASH', 'bKash'],
-      ['NAGAD', 'Nagad'],
-      ['STRIPE', 'Stripe'],
-      ['WALLET', 'Internal wallet'],
-      ['MANUAL', 'Manual / counter'],
-    ],
-  },
-  {
-    code: 'PAYMENT_STATUS',
-    name: 'Payment status',
-    values: [
-      ['INITIATED', 'Initiated'],
-      ['PENDING', 'Pending'],
-      ['CAPTURED', 'Captured'],
-      ['FAILED', 'Failed'],
-      ['REFUNDED', 'Refunded'],
-      ['PARTIALLY_REFUNDED', 'Partially refunded'],
-    ],
-  },
-  {
-    code: 'REFUND_STATUS',
-    name: 'Refund status',
-    values: [
-      ['REQUESTED', 'Requested'],
-      ['PENDING_APPROVAL', 'Pending approval'],
-      ['APPROVED', 'Approved'],
-      ['PROCESSED', 'Processed'],
-      ['REJECTED', 'Rejected'],
-      ['FAILED', 'Failed'],
-    ],
-  },
-  {
-    code: 'DISCOUNT_TYPE',
-    name: 'Promo discount type',
-    values: [
-      ['PERCENT', 'Percentage'],
-      ['FLAT', 'Flat amount'],
-      ['CASHBACK', 'Cashback'],
-    ],
-  },
-  {
-    code: 'LEDGER_ACCOUNT',
-    name: 'Ledger account',
-    values: [
-      ['RECEIVABLE_GATEWAY', 'Receivable: payment gateway'],
-      ['REVENUE_TICKET', 'Revenue: tickets'],
-      ['COMMISSION_PLATFORM', 'Commission: platform'],
-      ['LIABILITY_CUSTOMER_WALLET', 'Liability: customer wallet'],
-      ['PAYABLE_TENANT', 'Payable: tenant'],
-    ],
-  },
-  {
-    code: 'LEDGER_REF_TYPE',
-    name: 'Ledger reference type',
-    values: [
-      ['BOOKING', 'Booking'],
-      ['PAYMENT', 'Payment'],
-      ['REFUND', 'Refund'],
-      ['SETTLEMENT', 'Settlement'],
-      ['WALLET', 'Wallet'],
-    ],
-  },
-  {
-    code: 'SETTLEMENT_STATUS',
-    name: 'Settlement status',
-    values: [
-      ['DRAFT', 'Draft'],
-      ['APPROVED', 'Approved'],
-      ['PAID', 'Paid'],
-      ['DISPUTED', 'Disputed'],
-    ],
-  },
-  {
-    code: 'NOTIFICATION_CHANNEL',
-    name: 'Notification channel',
-    values: [
+  ),
+  g('BOOKING_ITEM_TYPE', 'Booking item type', 'booking_item.item_type_id', [
+    ['SEAT', 'Seat / unit'],
+    ['ANCILLARY', 'Ancillary'],
+    ['FEE', 'Fee'],
+  ]),
+  g('BOOKING_ITEM_STATUS', 'Booking item status', 'booking_item.status_id', [
+    ['ACTIVE', 'Active'],
+    ['BOARDED', 'Boarded'],
+    ['CANCELLED', 'Cancelled', TERM],
+    ['REFUNDED', 'Refunded', TERM],
+  ]),
+  g('TICKET_STATUS', 'Ticket status', 'ticket.status_id', [
+    ['ISSUED', 'Issued'],
+    ['USED', 'Used', TERM],
+    ['VOID', 'Void', TERM],
+    ['REISSUED', 'Reissued', TERM],
+    ['EXPIRED', 'Expired', TERM],
+  ]),
+  g('PAYMENT_METHOD', 'Payment method', 'payment.payment_method_id', [
+    ['BKASH', 'bKash'],
+    ['NAGAD', 'Nagad'],
+    ['ROCKET', 'Rocket'],
+    ['CREDIT_CARD', 'Credit card'],
+    ['DEBIT_CARD', 'Debit card'],
+    ['NET_BANKING', 'Net banking'],
+    ['IN_APP_WALLET', 'In-app wallet'],
+    ['COUNTER_CASH', 'Counter cash'],
+    ['AGENT_CREDIT', 'Agent credit'],
+  ]),
+  g('PAYMENT_GATEWAY', 'Payment gateway', 'payment.gateway_provider_id', [
+    ['SSLCOMMERZ', 'SSLCommerz'],
+    ['BKASH', 'bKash'],
+    ['NAGAD', 'Nagad'],
+    ['STRIPE', 'Stripe'],
+    ['WALLET', 'Internal wallet'],
+    ['MANUAL', 'Manual / counter'],
+  ]),
+  g('PAYMENT_STATUS', 'Payment status', 'payment.status_id', [
+    ['INITIATED', 'Initiated'],
+    ['PENDING', 'Pending'],
+    ['CAPTURED', 'Captured'],
+    ['FAILED', 'Failed', TERM],
+    ['CANCELLED', 'Cancelled', TERM],
+    ['REFUNDED', 'Refunded', TERM],
+    ['PARTIALLY_REFUNDED', 'Partially refunded'],
+  ]),
+  g('REFUND_STATUS', 'Refund status', 'refund.status_id', [
+    ['REQUESTED', 'Requested'],
+    ['PENDING_APPROVAL', 'Pending approval'],
+    ['APPROVED', 'Approved'],
+    ['PROCESSED', 'Processed', TERM],
+    ['REJECTED', 'Rejected', TERM],
+    ['FAILED', 'Failed', TERM],
+  ]),
+  g('DISCOUNT_TYPE', 'Promo discount type', 'promo.discount_type_id', [
+    ['PERCENT', 'Percentage'],
+    ['FLAT', 'Flat amount'],
+    ['CASHBACK', 'Cashback'],
+  ]),
+  g('LEDGER_ACCOUNT', 'Ledger account', 'ledger_entry.account_id', [
+    ['RECEIVABLE_GATEWAY', 'Receivable: payment gateway'],
+    ['RECEIVABLE_AGENT', 'Receivable: agent'],
+    ['CASH_COUNTER', 'Cash: counter'],
+    ['REVENUE_TICKET', 'Revenue: tickets'],
+    ['REVENUE_ANCILLARY', 'Revenue: ancillaries'],
+    ['COMMISSION_PLATFORM', 'Commission: platform'],
+    ['LIABILITY_CUSTOMER_WALLET', 'Liability: customer wallet'],
+    ['LIABILITY_TAX', 'Liability: tax (VAT)'],
+    ['PAYABLE_TENANT', 'Payable: tenant'],
+    ['EXPENSE_REFUND', 'Expense: refunds'],
+    ['EXPENSE_PROMO', 'Expense: promo discounts'],
+  ]),
+  g('LEDGER_REF_TYPE', 'Ledger reference type', 'ledger_entry.ref_type_id', [
+    ['BOOKING', 'Booking'],
+    ['PAYMENT', 'Payment'],
+    ['REFUND', 'Refund'],
+    ['PROMO', 'Promo redemption'],
+    ['SETTLEMENT', 'Settlement'],
+    ['WALLET', 'Wallet'],
+  ]),
+  g('SETTLEMENT_STATUS', 'Settlement status', 'settlement.status_id', [
+    ['DRAFT', 'Draft'],
+    ['APPROVED', 'Approved'],
+    ['PAID', 'Paid', TERM],
+    ['DISPUTED', 'Disputed'],
+    ['CANCELLED', 'Cancelled', TERM],
+  ]),
+  g(
+    'NOTIFICATION_CHANNEL',
+    'Notification channel',
+    'notification_log.channel_id',
+    [
       ['SMS', 'SMS'],
       ['EMAIL', 'Email'],
       ['PUSH', 'Push notification'],
     ],
-  },
-  {
-    code: 'NOTIFICATION_STATUS',
-    name: 'Notification status',
-    values: [
+  ),
+  g(
+    'NOTIFICATION_STATUS',
+    'Notification status',
+    'notification_log.status_id',
+    [
       ['QUEUED', 'Queued'],
       ['SENT', 'Sent'],
-      ['DELIVERED', 'Delivered'],
-      ['FAILED', 'Failed'],
+      ['DELIVERED', 'Delivered', TERM],
+      ['FAILED', 'Failed', TERM],
     ],
-  },
+  ),
 
   // ---------------- Cluster G: supplier integration ----------------
-  {
-    code: 'SUPPLIER_AUTH_TYPE',
-    name: 'Supplier auth type',
-    values: [
+  g(
+    'SUPPLIER_AUTH_TYPE',
+    'Supplier auth type',
+    'supplier_connection.auth_type_id',
+    [
       ['API_KEY', 'API key'],
       ['BEARER_OAUTH2', 'Bearer / OAuth2'],
       ['BASIC_AUTH', 'Basic auth'],
     ],
-  },
-  {
-    code: 'CONNECTION_STATUS',
-    name: 'Supplier connection status',
-    values: [
+  ),
+  g(
+    'CONNECTION_STATUS',
+    'Supplier connection status',
+    'supplier_connection.status_id',
+    [
       ['ACTIVE', 'Active'],
       ['INACTIVE', 'Inactive'],
       ['ERROR', 'Error'],
     ],
-  },
-  {
-    code: 'INTEGRATION_DIRECTION',
-    name: 'Integration direction',
-    values: [
+  ),
+  g(
+    'INTEGRATION_DIRECTION',
+    'Integration direction',
+    'integration_log.direction_id',
+    [
       ['INBOUND', 'Inbound'],
       ['OUTBOUND', 'Outbound'],
     ],
-  },
+  ),
 
   // ---------------- Cluster H: crew ----------------
-  {
-    code: 'EMPLOYMENT_TYPE',
-    name: 'Employment type',
-    values: [
-      ['EMPLOYEE', 'Employee'],
-      ['CONTRACT', 'Contract'],
-      ['DAILY', 'Daily wage'],
-    ],
-  },
-  {
-    code: 'CREW_STATUS',
-    name: 'Crew status',
-    values: [
-      ['ACTIVE', 'Active'],
-      ['ON_LEAVE', 'On leave'],
-      ['SUSPENDED', 'Suspended'],
-      ['TERMINATED', 'Terminated'],
-    ],
-  },
-  {
-    code: 'CREW_ROLE',
-    name: 'Crew role',
-    values: [
+  g('EMPLOYMENT_TYPE', 'Employment type', 'crew_member.employment_type_id', [
+    ['EMPLOYEE', 'Employee'],
+    ['CONTRACT', 'Contract'],
+    ['DAILY', 'Daily wage'],
+  ]),
+  g('CREW_STATUS', 'Crew status', 'crew_member.status_id', [
+    ['ACTIVE', 'Active'],
+    ['ON_LEAVE', 'On leave'],
+    ['SUSPENDED', 'Suspended'],
+    ['TERMINATED', 'Terminated', TERM],
+  ]),
+  g(
+    'CREW_ROLE',
+    'Crew role',
+    'crew_member_role, crew_requirement, resource_crew, trip_crew .crew_role_id',
+    [
       ['DRIVER', 'Driver'],
       ['CONTRACTOR', 'Contractor'],
       ['HELPER', 'Helper'],
       ['SUPERVISOR', 'Supervisor'],
     ],
-  },
-  {
-    code: 'CREW_DOC_TYPE',
-    name: 'Crew document type',
-    values: [
-      ['DRIVING_LICENSE', 'Driving license'],
-      ['NID', 'National ID'],
-      ['HEALTH_CERT', 'Health certificate'],
-      ['TRAINING_CERT', 'Training certificate'],
-    ],
-  },
-  {
-    code: 'LEAVE_TYPE',
-    name: 'Leave type',
-    values: [
-      ['ANNUAL', 'Annual leave'],
-      ['MEDICAL', 'Medical leave'],
-      ['EMERGENCY', 'Emergency leave'],
-      ['REST_DAY', 'Rest day'],
-    ],
-  },
-  {
-    code: 'LEAVE_STATUS',
-    name: 'Leave status',
-    values: [
-      ['PENDING', 'Pending'],
-      ['APPROVED', 'Approved'],
-      ['REJECTED', 'Rejected'],
-      ['CANCELLED', 'Cancelled'],
-    ],
-  },
-  {
-    code: 'DUTY_STATUS',
-    name: 'Crew duty status',
-    values: [
-      ['ASSIGNED', 'Assigned'],
-      ['CONFIRMED', 'Confirmed'],
-      ['CHECKED_IN', 'Checked in'],
-      ['COMPLETED', 'Completed'],
-      ['REPLACED', 'Replaced'],
-      ['NO_SHOW', 'No-show'],
-    ],
-  },
+  ),
+  g('CREW_DOC_TYPE', 'Crew document type', 'crew_document.doc_type_id', [
+    ['DRIVING_LICENSE', 'Driving license'],
+    ['NID', 'National ID'],
+    ['HEALTH_CERT', 'Health certificate'],
+    ['TRAINING_CERT', 'Training certificate'],
+  ]),
+  g('LEAVE_TYPE', 'Leave type', 'crew_leave.leave_type_id', [
+    ['ANNUAL', 'Annual leave'],
+    ['MEDICAL', 'Medical leave'],
+    ['EMERGENCY', 'Emergency leave'],
+    ['REST_DAY', 'Rest day'],
+  ]),
+  g('LEAVE_STATUS', 'Leave status', 'crew_leave.status_id', [
+    ['PENDING', 'Pending'],
+    ['APPROVED', 'Approved', TERM],
+    ['REJECTED', 'Rejected', TERM],
+    ['CANCELLED', 'Cancelled', TERM],
+  ]),
+  g('DUTY_STATUS', 'Crew duty status', 'trip_crew.duty_status_id', [
+    ['ASSIGNED', 'Assigned'],
+    ['CONFIRMED', 'Confirmed'],
+    ['CHECKED_IN', 'Checked in'],
+    ['COMPLETED', 'Completed', TERM],
+    ['REPLACED', 'Replaced', TERM],
+    ['NO_SHOW', 'No-show', TERM],
+  ]),
 ];
 
-// product-type-specific lookup values (lookup_dtl.product_type_id is set)
+// ===========================================================================
+// PRODUCT-TYPE-SPECIFIC LOOKUP VALUES (lookup_dtl.product_type_id is set)
+//  - Descriptions are omitted for groups that also exist globally, so the
+//    global lookup_mst.description is never overwritten.
+//  - lk(group, code, pt) prefers these rows and falls back to the global row.
+// ===========================================================================
 const OFFERING_CLASSES: Record<string, LV[]> = {
   BUS: [
     ['NON_AC', 'Non-AC'],
@@ -1091,47 +1012,232 @@ const OFFERING_CLASSES: Record<string, LV[]> = {
   ],
 };
 
-const PT_LOOKUPS: { pt: string; group: string; name: string; values: LV[] }[] =
-  [
-    ...Object.entries(OFFERING_CLASSES).map(([pt, values]) => ({
-      pt,
-      group: 'OFFERING_CLASS',
-      name: 'Offering class',
-      values,
-    })),
-    // Event tickets are "checked in" / "attended" rather than "boarded" / "completed"
-    {
-      pt: 'EVENT',
-      group: 'BOOKING_STATUS',
-      name: 'Booking status',
-      values: [
-        ['BOARDED', 'Checked in', { isTerminal: false }],
-        ['COMPLETED', 'Attended', { isTerminal: true }],
+// Extra crew roles that only make sense for one product type
+const CREW_ROLES_BY_PT: Record<string, LV[]> = {
+  BUS: [
+    ['CONDUCTOR', 'Conductor'],
+    ['CO_DRIVER', 'Co-driver'],
+  ],
+  TRAIN: [
+    ['LOCO_PILOT', 'Loco pilot'],
+    ['ASSISTANT_LOCO_PILOT', 'Assistant loco pilot'],
+    ['GUARD', 'Guard'],
+    ['TICKET_EXAMINER', 'Ticket examiner'],
+  ],
+  FLIGHT: [
+    ['CAPTAIN', 'Captain'],
+    ['FIRST_OFFICER', 'First officer'],
+    ['CABIN_CREW', 'Cabin crew'],
+  ],
+  FERRY: [
+    ['MASTER', 'Master (captain)'],
+    ['ENGINEER', 'Engineer'],
+    ['DECKHAND', 'Deckhand'],
+  ],
+  EVENT: [
+    ['USHER', 'Usher'],
+    ['SECURITY', 'Security'],
+  ],
+  TOUR: [
+    ['TOUR_GUIDE', 'Tour guide'],
+    ['TOUR_MANAGER', 'Tour manager'],
+  ],
+};
+
+type PtLookup = {
+  pt: string;
+  group: string;
+  name: string;
+  description?: string;
+  values: LV[];
+};
+
+const PT_LOOKUPS: PtLookup[] = [
+  ...Object.entries(OFFERING_CLASSES).map(([pt, values]) => ({
+    pt,
+    group: 'OFFERING_CLASS',
+    name: 'Offering class',
+    description:
+      'Used by offering class selection (product-type-specific values)',
+    values,
+  })),
+  ...Object.entries(CREW_ROLES_BY_PT).map(([pt, values]) => ({
+    pt,
+    group: 'CREW_ROLE',
+    name: 'Crew role',
+    values,
+  })),
+  // Event tickets are "checked in" / "attended" rather than "boarded" / "completed"
+  {
+    pt: 'EVENT',
+    group: 'BOOKING_STATUS',
+    name: 'Booking status',
+    values: [
+      [
+        'BOARDED',
+        'Checked in',
+        { isTerminal: false, color: BOOKING_COLORS.BOARDED },
       ],
-    },
-  ];
+      [
+        'COMPLETED',
+        'Attended',
+        { isTerminal: true, color: BOOKING_COLORS.COMPLETED },
+      ],
+    ],
+  },
+];
 
-async function seedGlobalLookups() {
-  let total = 0;
-  for (const g of GLOBAL_LOOKUPS) {
-    await ensureLookup(g.code, g.name, g.values);
-    total += g.values.length;
+// ---------------------------------------------------------------------------
+// Sanity check: no duplicate group codes / value codes
+// ---------------------------------------------------------------------------
+function assertNoDuplicates() {
+  const groups = new Set<string>();
+  for (const grp of GLOBAL_LOOKUPS) {
+    if (groups.has(grp.code))
+      throw new Error(`Duplicate lookup group: ${grp.code}`);
+    groups.add(grp.code);
+    const codes = new Set<string>();
+    for (const [code] of grp.values) {
+      if (codes.has(code))
+        throw new Error(`Duplicate lookup value: ${grp.code}/${code}`);
+      codes.add(code);
+    }
   }
-  await loadLookupCache();
-  log(
-    `${GLOBAL_LOOKUPS.length} lookup groups (lookup_mst), ${total} global values (lookup_dtl)`,
-  );
+  const seen = new Set<string>();
+  for (const l of PT_LOOKUPS)
+    for (const [code] of l.values) {
+      const key = `${l.group}:${l.pt}:${code}`;
+      if (seen.has(key)) throw new Error(`Duplicate PT lookup: ${key}`);
+      seen.add(key);
+    }
 }
 
-async function seedProductTypeLookups(ptIds: Record<string, bigint>) {
-  let total = 0;
-  for (const l of PT_LOOKUPS) {
-    await ensureLookup(l.group, l.name, l.values, ptIds[l.pt]);
-    total += l.values.length;
+// ===========================================================================
+// LOOKUP ENGINE (lookup_mst / lookup_dtl upsert + id resolver)
+// ===========================================================================
+function createLookupService(prisma: PrismaClient) {
+  const cache = new Map<string, bigint>();
+  const log = (msg: string) => console.log(`  ✓ ${msg}`);
+
+  async function loadLookupCache() {
+    const rows = await prisma.lookupDtl.findMany({
+      include: { lookupMst: true, productType: true },
+    });
+    cache.clear();
+    for (const r of rows) {
+      const key = r.productType
+        ? `${r.lookupMst.code}:${r.code}:${r.productType.code}`
+        : `${r.lookupMst.code}:${r.code}`;
+      cache.set(key, r.id);
+    }
   }
-  await loadLookupCache();
-  log(`${total} product-type-specific lookup values`);
+
+  /** Resolve a lookup_dtl.id. With `pt`, a product-type-specific value wins over the global one. */
+  function lk(group: string, code: string, pt?: string): bigint {
+    const id =
+      (pt ? cache.get(`${group}:${code}:${pt}`) : undefined) ??
+      cache.get(`${group}:${code}`);
+    if (id === undefined)
+      throw new Error(
+        `Lookup not found: ${group}/${code}${pt ? ` (product type ${pt})` : ''}`,
+      );
+    return id;
+  }
+
+  async function ensureLookup(
+    group: Pick<
+      LookupGroup,
+      'code' | 'name' | 'description' | 'isSystem' | 'values'
+    >,
+    productTypeId: bigint | null = null,
+  ) {
+    const mst = await prisma.lookupMst.upsert({
+      where: { code: group.code },
+      update: {
+        name: group.name,
+        isActive: true,
+        ...(group.description ? { description: group.description } : {}),
+      },
+      create: {
+        code: group.code,
+        name: group.name,
+        description: group.description ?? null,
+        isSystem: group.isSystem ?? true,
+        isActive: true,
+      },
+    });
+
+    // one query for all existing values of this (group, product type) instead of one per value
+    const existing = await prisma.lookupDtl.findMany({
+      where: { lookupMstId: mst.id, productTypeId },
+    });
+    const byCode = new Map(existing.map((e) => [e.code, e]));
+
+    let order = 10;
+    for (const [code, label, meta] of group.values) {
+      const metaPart = meta ? { metadata: meta } : {};
+      const found = byCode.get(code);
+      if (found)
+        await prisma.lookupDtl.update({
+          where: { id: found.id },
+          data: { label, sortOrder: order, isActive: true, ...metaPart },
+        });
+      else
+        await prisma.lookupDtl.create({
+          data: {
+            lookupMstId: mst.id,
+            productTypeId,
+            code,
+            label,
+            sortOrder: order,
+            isSystem: true,
+            isActive: true,
+            ...metaPart,
+          },
+        });
+      order += 10;
+    }
+  }
+
+  async function seedGlobalLookups() {
+    assertNoDuplicates();
+    let total = 0;
+    for (const grp of GLOBAL_LOOKUPS) {
+      await ensureLookup(grp);
+      total += grp.values.length;
+    }
+    await loadLookupCache();
+    log(
+      `${GLOBAL_LOOKUPS.length} lookup groups (lookup_mst), ${total} global values (lookup_dtl)`,
+    );
+  }
+
+  async function seedProductTypeLookups(ptIds: Record<string, bigint>) {
+    let total = 0;
+    for (const l of PT_LOOKUPS) {
+      const productTypeId = ptIds[l.pt];
+      if (!productTypeId)
+        throw new Error(`Unknown product type "${l.pt}" for ${l.group}`);
+      await ensureLookup(
+        {
+          code: l.group,
+          name: l.name,
+          description: l.description,
+          values: l.values,
+        },
+        productTypeId,
+      );
+      total += l.values.length;
+    }
+    await loadLookupCache();
+    log(`${total} product-type-specific lookup values`);
+  }
+
+  return { lk, loadLookupCache, seedGlobalLookups, seedProductTypeLookups };
 }
+
+const { lk, seedGlobalLookups, seedProductTypeLookups } =
+  createLookupService(prisma);
 
 // ---------------------------------------------------------------------------
 // 1. PLANS & FEATURES
@@ -1436,7 +1542,7 @@ async function seedRoles(): Promise<Record<string, bigint>> {
   log(`${PERMISSIONS.length} permissions`);
 
   const perms = await prisma.permission.findMany();
-  const permId = new Map(perms.map((p: any) => [p.code, p.id]));
+  const permId = new Map(perms.map((p) => [p.code, p.id]));
   const roleIds: Record<string, bigint> = {};
 
   for (const r of ROLES) {
@@ -2794,6 +2900,7 @@ async function seedSuperAdmin(roleIds: Record<string, bigint>) {
         passwordHash,
         mfaEnabled: false,
         statusId: activeStaffId,
+        tenantId: null,
         lastLoginAt: now,
         lastLoginIp: '127.0.0.1',
         lastActiveAt: now,
@@ -2907,7 +3014,7 @@ async function seedTenants(
       domain: 'sundarban.fairpath.app',
       planCode: 'STARTER',
       paymentModel: 'PREPAID',
-      productTypeCode: 'FERRY', // was 'LAUNCH', which is not a seeded product type
+      productTypeCode: 'FERRY',
       branch: {
         code: 'SN-SDR-01',
         name: 'Sadarghat Terminal Gate 3',
@@ -2994,6 +3101,68 @@ async function seedTenants(
       });
     }
 
+    // Seed sales domain
+    let salesDomain = await prisma.salesDomain.findFirst({
+      where: { tenantId: tenant.id, domainName: t.domain },
+    });
+    if (!salesDomain) {
+      await prisma.salesDomain.create({
+        data: {
+          tenantId: tenant.id,
+          domainName: t.domain,
+          isPrimary: true,
+          isVerified: true,
+        },
+      });
+    }
+
+    // Seed default tenant settings
+    const scopeTenantId = lk('SCOPE_TYPE', 'TENANT');
+    const defaultSettings = [
+      { key: 'DEFAULT_CURRENCY', value: 'BDT' },
+      { key: 'TIMEZONE', value: 'Asia/Dhaka' },
+      { key: 'MAX_SEATS_PER_BOOKING', value: 4 },
+      { key: 'HOLD_TTL_MINUTES', value: 10 },
+    ];
+    for (const setting of defaultSettings) {
+      const existingSetting = await prisma.tenantSetting.findFirst({
+        where: { tenantId: tenant.id, key: setting.key },
+      });
+      if (!existingSetting) {
+        await prisma.tenantSetting.create({
+          data: {
+            tenantId: tenant.id,
+            scopeTypeId: scopeTenantId,
+            scopeId: tenant.id,
+            key: setting.key,
+            value: setting.value,
+          },
+        });
+      }
+    }
+
+    // Seed default tenant authorized agent
+    const agentActiveId = lk('AGENT_STATUS', 'ACTIVE');
+    const agentEmail = `agent@${t.domain}`;
+    let agent = await prisma.agent.findFirst({
+      where: { tenantId: tenant.id, email: agentEmail },
+    });
+    if (!agent) {
+      await prisma.agent.create({
+        data: {
+          tenantId: tenant.id,
+          branchId: branch.id,
+          name: `${t.name} Primary Agent`,
+          phone: t.branch.phone,
+          email: agentEmail,
+          creditLimit: 5000000n, // 50,000 BDT in poisha
+          currentBalance: 0n,
+          commissionRate: new Prisma.Decimal('5.00'),
+          statusId: agentActiveId,
+        },
+      });
+    }
+
     // Seed staff for this tenant with tracking
     for (const s of t.staff) {
       const roleId = roleIds[s.roleName];
@@ -3011,12 +3180,18 @@ async function seedTenants(
             passwordHash: defaultPasswordHash,
             mfaEnabled: false,
             statusId: staffActiveId,
+            tenantId: tenant.id,
             createdById: superAdmin.id,
             lastLoginAt: s.lastLoginAt,
             lastLoginIp: s.lastLoginIp,
             lastActiveAt: s.lastActiveAt,
             failedLoginAttempts: 0,
           },
+        });
+      } else if (!staffUser.tenantId) {
+        staffUser = await prisma.staffUser.update({
+          where: { id: staffUser.id },
+          data: { tenantId: tenant.id },
         });
       }
 
@@ -3183,12 +3358,12 @@ async function seedKycSubmissions(superAdmin: { id: bigint }) {
 // ---------------------------------------------------------------------------
 async function main() {
   console.log('Seeding configuration data...');
-  await seedGlobalLookups(); // must run first: everything below resolves ids via lk()
+  await seedGlobalLookups(); // lookup_mst + lookup_dtl (global). Must run first: everything below resolves ids via lk()
   await seedPlans();
   await seedCurrencies();
   const roleIds = await seedRoles();
   const ptIds = await seedProductTypes();
-  await seedProductTypeLookups(ptIds); // needs product type ids
+  await seedProductTypeLookups(ptIds); // lookup_dtl rows with product_type_id set (needs product type ids)
   await seedWorkflows(ptIds); // needs BOOKING_STATUS lookups (incl. EVENT overrides)
   await seedAttributes(ptIds);
   await seedPolicies(ptIds);

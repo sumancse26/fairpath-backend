@@ -24,12 +24,13 @@ export class TenantsController {
   @ResponseMessage('Tenant Saved Successfully')
   async createTenants(
     @Body({ schema: createTenantSchema }) dto: CreateTenantType,
+    @Cookie('user_id') cookieUserId?: string,
     @Cookie('role_id') cookieRoleId?: string,
     @CurrentUser() user?: AuthUser,
   ) {
     const roleId = user?.roleId ?? cookieRoleId;
-    const result = await this.tenantService.createTenant(dto, roleId ?? undefined);
+    const userId = user?.id ?? cookieUserId;
 
-    return result;
+    return this.tenantService.createTenant(dto, roleId);
   }
 }
