@@ -22,7 +22,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator.js';
 import type { AuthUser } from './types/auth.types.js';
 
-@Controller({ path: 'auth', version: '1' })
+@Controller('auth')
 export class AuthController {
   private readonly cookieDomain: string;
   private readonly cookieSecure: boolean;

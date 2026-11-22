@@ -29,7 +29,7 @@ export class TenantsController {
     @CurrentUser() user?: AuthUser,
   ) {
     const roleId = user?.roleId ?? cookieRoleId;
-    const userId = user?.id ?? cookieUserId;
+    const _userId = user?.id ?? cookieUserId;
 
     return this.tenantService.createTenant(dto, roleId);
   }

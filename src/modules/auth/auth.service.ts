@@ -11,15 +11,8 @@ import type {
   StaffUserRecord,
 } from './types/auth.types.js';
 
-const STAFF_INCLUDE = {
-  memberships: {
-    where: { status: { equals: 'ACTIVE', mode: 'insensitive' } },
-    include: {
-      role: { select: { id: true, name: true } },
-      tenant: { select: { id: true, name: true } },
-    },
-  },
-} as const;
+const ACTIVE_STAFF_STATUS_ID = 15;
+const ACTIVE_MEMBERSHIP_STATUS_ID = 20;
 
 @Injectable()
 export class AuthService {
@@ -30,17 +23,30 @@ export class AuthService {
 
   async login(dto: LoginDto, ip?: string): Promise<AuthTokensResponse> {
     const email = dto.email.toLowerCase();
+    const { activeStaffId, activeMembershipId } =
+      await this.getActiveStatusIds();
 
     const user = (await this.db.staffUser.findUnique({
       where: { email },
-      include: STAFF_INCLUDE,
+      include: {
+        tenant: { select: { name: true } },
+        memberships: {
+          where: activeMembershipId
+            ? { statusId: activeMembershipId }
+            : undefined,
+          include: {
+            role: { select: { id: true, name: true } },
+            tenant: { select: { id: true, name: true } },
+          },
+        },
+      },
     })) as StaffUserRecord | null;
 
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    if (user.status?.toUpperCase() !== 'ACTIVE') {
+    if (activeStaffId && user.statusId !== activeStaffId) {
       throw new UnauthorizedException('Account is inactive or suspended');
     }
 
@@ -55,10 +61,8 @@ export class AuthService {
     });
 
     const authUser = this.toAuthUser(user);
-    const claims = this.buildClaims(authUser);
-
     const tokens = await this.tokenService.issue(authUser.id, {
-      claims,
+      claims: this.buildClaims(authUser),
       method: 'password',
     });
 
@@ -93,12 +97,30 @@ export class AuthService {
 
   async validateUserById(id: string): Promise<AuthUser | null> {
     try {
+      const { activeStaffId, activeMembershipId } =
+        await this.getActiveStatusIds();
+
       const user = (await this.db.staffUser.findUnique({
         where: { id: BigInt(id) },
-        include: STAFF_INCLUDE,
+        include: {
+          tenant: { select: { name: true } },
+          memberships: {
+            where: activeMembershipId
+              ? { statusId: activeMembershipId }
+              : undefined,
+            include: {
+              role: { select: { id: true, name: true } },
+              tenant: { select: { id: true, name: true } },
+            },
+          },
+        },
       })) as StaffUserRecord | null;
 
-      if (!user || !user.email || user.status?.toLowerCase() !== 'active') {
+      if (!user || !user.email) {
+        return null;
+      }
+
+      if (activeStaffId && user.statusId !== activeStaffId) {
         return null;
       }
 
@@ -106,6 +128,20 @@ export class AuthService {
     } catch {
       return null;
     }
+  }
+
+  private async getActiveStatusIds() {
+    const [activeStaff, activeMembership] = await Promise.all([
+      this.db.lookupDtl.findUnique({ where: { id: ACTIVE_STAFF_STATUS_ID } }),
+      this.db.lookupDtl.findUnique({
+        where: { id: ACTIVE_MEMBERSHIP_STATUS_ID },
+      }),
+    ]);
+
+    return {
+      activeStaffId: activeStaff?.id ?? ACTIVE_STAFF_STATUS_ID,
+      activeMembershipId: activeMembership?.id ?? ACTIVE_MEMBERSHIP_STATUS_ID,
+    };
   }
 
   private toAuthUser(user: StaffUserRecord): AuthUser {
@@ -117,12 +153,13 @@ export class AuthService {
       email: user.email ?? '',
       fullName: user.fullName,
       phone: user.phone,
-      status: user.status,
+      status: user.statusId.toString(),
       isSuperAdmin,
       roleId: primary?.roleId?.toString() ?? null,
       roleName: primary?.role?.name ?? null,
-      tenantId: primary?.tenantId?.toString() ?? null,
-      tenantName: primary?.tenant?.name ?? null,
+      tenantId:
+        primary?.tenantId?.toString() ?? user.tenantId?.toString() ?? null,
+      tenantName: primary?.tenant?.name ?? user.tenant?.name ?? null,
       branchId: primary?.branchId?.toString() ?? null,
     };
   }

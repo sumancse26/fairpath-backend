@@ -1,5 +1,6 @@
 import { StandardSchemaValidationPipe, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { AppModule, ObserveInstrument } from './app.module.js';
 
 async function bootstrap() {
@@ -7,7 +8,10 @@ async function bootstrap() {
     instrument: ObserveInstrument,
   });
 
-  const frontendUrl = process.env.FRONTEND_URL;
+  const config = app.get(ConfigService);
+  const apiVersion = config.get<string>('API_VERSION') || '1';
+
+  const frontendUrl = config.get<string>('FRONTEND_URL');
   app.enableCors({
     origin: frontendUrl
       ? frontendUrl.split(',').map((url) => url.trim())
@@ -21,9 +25,9 @@ async function bootstrap() {
 
   app.enableVersioning({
     type: VersioningType.URI,
-    defaultVersion: '1',
+    defaultVersion: apiVersion,
   });
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(config.get<number>('PORT') || 3000);
 }
 await bootstrap();

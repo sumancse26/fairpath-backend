@@ -7,8 +7,18 @@ describe('AuthService', () => {
   let mockDb: any;
   let mockTokenService: any;
 
+  const mockActiveStaffDtl = { id: 15n };
+  const mockActiveMembershipDtl = { id: 20n };
+
   beforeEach(() => {
     mockDb = {
+      lookupDtl: {
+        findUnique: vi.fn((args) => {
+          if (args.where.id === 15n) return Promise.resolve(mockActiveStaffDtl);
+          if (args.where.id === 20n) return Promise.resolve(mockActiveMembershipDtl);
+          return Promise.resolve(null);
+        }),
+      },
       staffUser: {
         findUnique: vi.fn(),
         update: vi.fn(),
@@ -33,12 +43,12 @@ describe('AuthService', () => {
       ).rejects.toThrow('Invalid email or password');
     });
 
-    it('throws if account is inactive', async () => {
+    it('throws if account statusId does not match active status id', async () => {
       mockDb.staffUser.findUnique.mockResolvedValue({
         id: 1n,
         email: 'user@test.com',
         passwordHash: 'hash',
-        status: 'SUSPENDED',
+        statusId: 99n, // inactive (not 15n)
         memberships: [],
       });
 
@@ -53,7 +63,7 @@ describe('AuthService', () => {
         id: 1n,
         email: 'user@test.com',
         passwordHash: hash,
-        status: 'ACTIVE',
+        statusId: 15n,
         memberships: [],
       });
 
@@ -62,7 +72,7 @@ describe('AuthService', () => {
       ).rejects.toThrow('Invalid email or password');
     });
 
-    it('returns tokens and user on success', async () => {
+    it('returns tokens and user on success with active statusId', async () => {
       const hash = await bcrypt.hash('Secret@123', 10);
       mockDb.staffUser.findUnique.mockResolvedValue({
         id: 1n,
@@ -70,14 +80,14 @@ describe('AuthService', () => {
         passwordHash: hash,
         fullName: 'Admin User',
         phone: null,
-        status: 'ACTIVE',
+        statusId: 15n,
         memberships: [
           {
             id: 10n,
             tenantId: 2n,
             branchId: 3n,
             roleId: 5n,
-            status: 'ACTIVE',
+            statusId: 20n,
             role: { id: 5n, name: 'Admin' },
             tenant: { id: 2n, name: 'Acme Corp' },
           },
@@ -98,12 +108,20 @@ describe('AuthService', () => {
       expect(result.accessToken).toBe('access-123');
       expect(result.refreshToken).toBe('refresh-456');
       expect(result.user.email).toBe('admin@fairpath.com');
+      expect(result.user.status).toBe('15');
       expect(result.user.roleId).toBe('5');
       expect(result.user.tenantId).toBe('2');
       expect(result.user.branchId).toBe('3');
       expect(result.user.isSuperAdmin).toBe(false);
 
-      // Verify claims include roleId, tenantId, branchId
+      expect(mockDb.staffUser.update).toHaveBeenCalledWith({
+        where: { id: 1n },
+        data: {
+          lastLoginAt: expect.any(Date),
+          lastLoginIp: '127.0.0.1',
+        },
+      });
+
       expect(mockTokenService.issue).toHaveBeenCalledWith('1', {
         claims: {
           email: 'admin@fairpath.com',
@@ -133,9 +151,9 @@ describe('AuthService', () => {
     it('throws on invalid token', async () => {
       mockTokenService.refresh.mockRejectedValue(new Error('bad'));
 
-      await expect(
-        authService.refresh('invalid'),
-      ).rejects.toThrow('Invalid or expired refresh token');
+      await expect(authService.refresh('invalid')).rejects.toThrow(
+        'Invalid or expired refresh token',
+      );
     });
   });
 
@@ -155,14 +173,14 @@ describe('AuthService', () => {
         email: 'staff@test.com',
         fullName: 'Staff',
         phone: null,
-        status: 'ACTIVE',
+        statusId: 15n,
         memberships: [
           {
             id: 20n,
             tenantId: 5n,
             branchId: null,
             roleId: 3n,
-            status: 'ACTIVE',
+            statusId: 20n,
             role: { id: 3n, name: 'Agent' },
             tenant: { id: 5n, name: 'Tenant A' },
           },
@@ -175,7 +193,7 @@ describe('AuthService', () => {
         email: 'staff@test.com',
         fullName: 'Staff',
         phone: null,
-        status: 'ACTIVE',
+        status: '15',
         isSuperAdmin: false,
         roleId: '3',
         roleName: 'Agent',
@@ -188,6 +206,16 @@ describe('AuthService', () => {
     it('returns null when user not found', async () => {
       mockDb.staffUser.findUnique.mockResolvedValue(null);
       expect(await authService.validateUserById('999')).toBeNull();
+    });
+
+    it('returns null when user statusId is not active', async () => {
+      mockDb.staffUser.findUnique.mockResolvedValue({
+        id: 1n,
+        email: 'inactive@test.com',
+        statusId: 99n,
+        memberships: [],
+      });
+      expect(await authService.validateUserById('1')).toBeNull();
     });
   });
 });

@@ -39,7 +39,7 @@ export interface StaffMembershipRecord {
   tenantId: bigint | null;
   branchId: bigint | null;
   roleId: bigint;
-  status: string;
+  statusId?: bigint;
   role: { id: bigint; name: string };
   tenant: { id: bigint; name: string } | null;
 }
@@ -50,6 +50,8 @@ export interface StaffUserRecord {
   phone: string | null;
   fullName: string;
   passwordHash: string | null;
-  status: string;
+  statusId: bigint;
+  tenantId?: bigint | null;
+  tenant?: { name: string } | null;
   memberships: StaffMembershipRecord[];
 }
