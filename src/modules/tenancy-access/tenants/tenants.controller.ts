@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
+  Query,
 } from '@nestjs/common';
 import { Cookie } from '../../../common/decorators/cookie.decorator.js';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
@@ -11,7 +13,9 @@ import { ResponseMessage } from '../../../common/decorators/response-message.dec
 import type { AuthUser } from '../../auth/types/auth.types.js';
 import {
   createTenantSchema,
+  tenantListQuerySchema,
   type CreateTenantType,
+  type TenantListQueryType,
 } from '../dto/tenant.dto.js';
 import { TenantsService } from './tenants.service.js';
 
@@ -32,5 +36,13 @@ export class TenantsController {
     const _userId = user?.id ?? cookieUserId;
 
     return this.tenantService.createTenant(dto, roleId);
+  }
+
+  @Get()
+  @ResponseMessage('Tenants retrieved successfully')
+  async getTenants(
+    @Query({ schema: tenantListQuerySchema }) query: TenantListQueryType,
+  ) {
+    return this.tenantService.getTenants(query);
   }
 }

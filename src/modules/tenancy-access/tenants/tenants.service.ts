@@ -5,7 +5,10 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { CreateTenantType } from '../dto/tenant.dto.js';
+import type {
+  CreateTenantType,
+  TenantListQueryType,
+} from '../dto/tenant.dto.js';
 import { DatabaseService } from '../../../database/database.service.js';
 
 @Injectable()
@@ -95,5 +98,86 @@ export class TenantsService {
       planId: tenant.planId.toString(),
       name: tenant.name,
     };
+  }
+
+  async getTenants(query: TenantListQueryType) {
+    const page = query.page || 1;
+    const limit = query.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const where: {
+      statusId?: bigint;
+      status?: { code: string };
+    } = {};
+
+    if (query.status) {
+      const trimmed = query.status.trim();
+      if (/^\d+$/.test(trimmed)) {
+        where.statusId = BigInt(trimmed);
+      } else {
+        where.status = { code: trimmed.toUpperCase() };
+      }
+    }
+
+    const orderBy = this.parseSort(query.sort);
+
+    const [total, tenants] = await Promise.all([
+      this.db.tenant.count({ where }),
+      this.db.tenant.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          status: { select: { code: true } },
+          paymentModel: { select: { code: true } },
+        },
+      }),
+    ]);
+
+    const pages = Math.ceil(total / limit) || 1;
+
+    const data = tenants.map((t) => ({
+      id: Number(t.id),
+      plan_id: Number(t.planId),
+      name: t.name,
+      status: t.status.code,
+      payment_model: t.paymentModel.code,
+      domain: t.domain,
+    }));
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        pages,
+      },
+    };
+  }
+
+  private parseSort(sortStr?: string) {
+    if (!sortStr) return { createdAt: 'desc' as const };
+    const [field, dir] = sortStr.split(':');
+    const direction =
+      dir?.toLowerCase() === 'asc' ? ('asc' as const) : ('desc' as const);
+
+    switch (field?.toLowerCase()) {
+      case 'name':
+        return { name: direction };
+      case 'id':
+        return { id: direction };
+      case 'plan_id':
+      case 'planid':
+        return { planId: direction };
+      case 'updated_at':
+      case 'updatedat':
+        return { updatedAt: direction };
+      case 'created_at':
+      case 'createdat':
+      default:
+        return { createdAt: direction };
+    }
   }
 }

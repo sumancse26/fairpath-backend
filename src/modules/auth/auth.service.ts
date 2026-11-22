@@ -46,7 +46,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    if (activeStaffId && user.statusId !== activeStaffId) {
+    if (activeStaffId && BigInt(user.statusId) !== BigInt(activeStaffId)) {
       throw new UnauthorizedException('Account is inactive or suspended');
     }
 
@@ -120,7 +120,7 @@ export class AuthService {
         return null;
       }
 
-      if (activeStaffId && user.statusId !== activeStaffId) {
+      if (activeStaffId && BigInt(user.statusId) !== BigInt(activeStaffId)) {
         return null;
       }
 

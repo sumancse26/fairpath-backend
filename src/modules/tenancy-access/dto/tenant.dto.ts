@@ -8,3 +8,12 @@ export const createTenantSchema = z.object({
 });
 
 export type CreateTenantType = z.infer<typeof createTenantSchema>;
+
+export const tenantListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  sort: z.string().optional().default('created_at:desc'),
+  status: z.string().optional(),
+});
+
+export type TenantListQueryType = z.infer<typeof tenantListQuerySchema>;

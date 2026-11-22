@@ -19,6 +19,7 @@ import type { ApiResponse } from '../interfaces/api-response.interface.js';
  *   data: { ... }
  * }
  *
+ * Supports paginated responses with top-level `meta`.
  * Use `@ResponseMessage('Custom message')` on a route to override the default message.
  */
 @Injectable()
@@ -40,12 +41,24 @@ export class TransformResponseInterceptor<T>
     const statusCode = context.switchToHttp().getResponse().statusCode;
 
     return next.handle().pipe(
-      map((data) => ({
-        success: true,
-        statusCode,
-        message,
-        data,
-      })),
+      map((res: any) => {
+        if (res && typeof res === 'object' && 'data' in res && 'meta' in res) {
+          return {
+            success: true,
+            statusCode,
+            message,
+            data: res.data,
+            meta: res.meta,
+          };
+        }
+
+        return {
+          success: true,
+          statusCode,
+          message,
+          data: res,
+        };
+      }),
     );
   }
 }
