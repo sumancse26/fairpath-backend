@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import {
   AuthenticationGuard,
@@ -13,6 +13,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor.js';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { TenantsModule } from './modules/tenancy-access/tenants/tenants.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
@@ -71,6 +72,10 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     {
       provide: APP_INTERCEPTOR,
       useClass: TransformResponseInterceptor,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
     },
   ],
 })

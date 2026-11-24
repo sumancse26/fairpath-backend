@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -8,6 +9,7 @@ import {
 import type {
   CreateTenantType,
   TenantListQueryType,
+  UpdateTenantType,
 } from '../dto/tenant.dto.js';
 import { DatabaseService } from '../../../database/database.service.js';
 
@@ -58,7 +60,9 @@ export class TenantsService {
     // --- Resolve status and payment model from lookup table ---
     const [tenantStatusMst, paymentModelMst] = await Promise.all([
       this.db.lookupMst.findUnique({ where: { id: 1 } }),
-      this.db.lookupMst.findUnique({ where: { id: 2 } }),
+      this.db.lookupMst.findUnique({
+        where: { id: 2 },
+      }),
     ]);
 
     if (!tenantStatusMst)
@@ -71,7 +75,7 @@ export class TenantsService {
         where: { lookupMstId: tenantStatusMst.id, code: 'APPLIED' },
       }),
       this.db.lookupDtl.findFirst({
-        where: { lookupMstId: paymentModelMst.id, code: 'TENANT_COLLECT' },
+        where: { lookupMstId: paymentModelMst.id, code: 'PLATFORM_COLLECT' },
       }),
     ]);
 
@@ -144,6 +148,9 @@ export class TenantsService {
       status: t.status.code,
       payment_model: t.paymentModel.code,
       domain: t.domain,
+      created_at: t.createdAt.toISOString(),
+      updated_at: t.updatedAt.toISOString(),
+      version: t.version,
     }));
 
     return {
@@ -154,6 +161,133 @@ export class TenantsService {
         limit,
         pages,
       },
+    };
+  }
+
+  async updateTenant(
+    payload: UpdateTenantType,
+    roleId: string | undefined,
+    tenantIdParam: string,
+  ) {
+    // --- Auth: role must exist and be a platform-level system role ---
+    if (!roleId) throw new UnauthorizedException('Authentication required');
+
+    const role = await this.db.role.findUnique({
+      where: { id: BigInt(roleId) },
+    });
+    if (!role || !role.isSystem || role.tenantId !== null) {
+      throw new ForbiddenException(
+        'Only platform Super Admins can update tenants',
+      );
+    }
+
+    const tenantId = BigInt(tenantIdParam);
+    const statusId = BigInt(payload.status_id);
+    const paymentModelId = BigInt(payload.payment_model_id);
+
+    const tenantExists = await this.db.tenant.findUnique({
+      where: { id: tenantId },
+    });
+    if (!tenantExists) {
+      throw new NotFoundException(`Tenant ${tenantIdParam} not found`);
+    }
+
+    // --- Validate plan ---
+    const plan = await this.db.plan.findUnique({
+      where: { id: BigInt(payload.plan_id) },
+    });
+    if (!plan) throw new NotFoundException(`Plan ${payload.plan_id} not found`);
+
+    // --- Normalize inputs ---
+    const name = payload.name.trim();
+    const domain = payload.domain?.trim() || null;
+
+    // --- Update tenant ---
+    const tenant = await this.db.tenant.update({
+      where: { id: tenantId },
+      data: {
+        planId: plan.id,
+        name,
+        domain,
+        statusId,
+        paymentModelId,
+      },
+    });
+
+    return {
+      id: tenant.id.toString(),
+      planId: tenant.planId.toString(),
+      name: tenant.name,
+    };
+  }
+
+  async getTenantDetails(userId: number, id: number) {
+    if (
+      !Number.isSafeInteger(userId) ||
+      userId < 1 ||
+      !Number.isSafeInteger(id) ||
+      id < 1
+    ) {
+      throw new BadRequestException('Invalid user ID or tenant ID');
+    }
+
+    const user = await this.db.staffUser.findUnique({
+      where: {
+        id: BigInt(userId),
+      },
+      include: {
+        memberships: {
+          include: {
+            role: { select: { isSystem: true, tenantId: true } },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Authenticated user not found');
+    }
+
+    const isPlatformSuperAdmin = user.memberships.some(
+      (membership) =>
+        membership.tenantId === null &&
+        membership.role.isSystem &&
+        membership.role.tenantId === null,
+    );
+
+    const tenantId = BigInt(id);
+
+    if (!isPlatformSuperAdmin && user.tenantId !== tenantId) {
+      throw new UnauthorizedException('User is not assigned to this tenant');
+    }
+
+    const tenant = await this.db.tenant.findUnique({
+      where: {
+        id: tenantId,
+      },
+      include: {
+        plan: { select: { code: true, name: true } },
+        status: { select: { code: true } },
+        paymentModel: { select: { code: true } },
+      },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException(`Tenant ${id} not found`);
+    }
+
+    return {
+      id: tenant.id.toString(),
+      plan_id: tenant.planId.toString(),
+      plan_code: tenant.plan.code,
+      plan_name: tenant.plan.name,
+      name: tenant.name,
+      status_id: tenant.statusId.toString(),
+      status: tenant.status.code,
+      payment_model_id: tenant.paymentModelId.toString(),
+      payment_model: tenant.paymentModel.code,
+      domain: tenant.domain,
+      version: tenant.version,
     };
   }
 
