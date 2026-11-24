@@ -28,3 +28,14 @@ export const updateTenantSchema = z.object({
 
 export type UpdateTenantType = z.infer<typeof updateTenantSchema>;
 export type UpdateTenantSchema = UpdateTenantType;
+
+export const createBranchSchema = z.object({
+  tenant_id: z.number().int().min(1, 'Tenant ID is required'),
+  code: z.string().trim().min(1, 'Branch code is required').max(50),
+  name: z.string().trim().min(1, 'Branch name is required').max(100),
+  city: z.string().trim().max(100).nullable().optional(),
+  address: z.string().trim().nullable().optional(),
+  phone: z.string().trim().max(30).nullable().optional(),
+});
+
+export type CreateBranchType = z.infer<typeof createBranchSchema>;

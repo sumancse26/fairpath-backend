@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type {
   CreateTenantType,
+  CreateBranchType,
   TenantListQueryType,
   UpdateTenantType,
 } from '../dto/tenant.dto.js';
@@ -222,12 +223,7 @@ export class TenantsService {
   }
 
   async getTenantDetails(userId: number, id: number) {
-    if (
-      !Number.isSafeInteger(userId) ||
-      userId < 1 ||
-      !Number.isSafeInteger(id) ||
-      id < 1
-    ) {
+    if (!Number.isSafeInteger(userId) || !Number.isSafeInteger(id) || id < 1) {
       throw new BadRequestException('Invalid user ID or tenant ID');
     }
 
@@ -288,6 +284,106 @@ export class TenantsService {
       payment_model: tenant.paymentModel.code,
       domain: tenant.domain,
       version: tenant.version,
+    };
+  }
+
+  async createBranch(
+    userId: number,
+    id: number,
+    payload: CreateBranchType,
+  ) {
+    if (
+      !Number.isSafeInteger(userId) ||
+      userId < 1 ||
+      !Number.isSafeInteger(id) ||
+      id < 1
+    ) {
+      throw new BadRequestException('Invalid user ID or tenant ID');
+    }
+
+    if (payload.tenant_id !== id) {
+      throw new BadRequestException(
+        'Payload tenant_id must match the tenant ID in the URL',
+      );
+    }
+
+    const user = await this.db.staffUser.findUnique({
+      where: {
+        id: BigInt(userId),
+      },
+      include: {
+        memberships: {
+          include: {
+            role: { select: { isSystem: true, tenantId: true } },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Authenticated user not found');
+    }
+
+    const isPlatformSuperAdmin = user.memberships.some(
+      (membership) =>
+        membership.tenantId === null &&
+        membership.role.isSystem &&
+        membership.role.tenantId === null,
+    );
+
+    const tenantId = BigInt(id);
+
+    if (!isPlatformSuperAdmin && user.tenantId !== tenantId) {
+      throw new UnauthorizedException('User is not assigned to this tenant');
+    }
+
+    const tenant = await this.db.tenant.findUnique({
+      where: {
+        id: tenantId,
+      },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException(`Tenant ${id} not found`);
+    }
+
+    const existingBranch = await this.db.branch.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          { code: { equals: payload.code, mode: 'insensitive' as const } },
+          { name: { equals: payload.name, mode: 'insensitive' as const } },
+        ],
+      },
+    });
+
+    if (existingBranch) {
+      const field =
+        existingBranch.code.toLowerCase() === payload.code.toLowerCase()
+          ? 'code'
+          : 'name';
+      throw new ConflictException(`Branch with this ${field} already exists`);
+    }
+
+    const branch = await this.db.branch.create({
+      data: {
+        tenantId,
+        code: payload.code,
+        name: payload.name,
+        city: payload.city || null,
+        address: payload.address || null,
+        phone: payload.phone || null,
+      },
+    });
+
+    return {
+      id: branch.id.toString(),
+      tenant_id: branch.tenantId.toString(),
+      code: branch.code,
+      name: branch.name,
+      city: branch.city,
+      address: branch.address,
+      phone: branch.phone,
     };
   }
 
