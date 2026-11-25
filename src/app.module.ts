@@ -15,6 +15,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { TransformResponseInterceptor } from './common/interceptors/transform-response.interceptor.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { TenantsModule } from './modules/tenancy-access/tenants/tenants.module.js';
+import { StaffUsersModule } from './modules/tenancy-access/staff-users/staff-users.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -61,6 +62,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     DatabaseModule,
     AuthModule,
     TenantsModule,
+    StaffUsersModule,
   ],
   controllers: [AppController],
   providers: [
