@@ -11,3 +11,14 @@ export const createStaffUserSchema = z.object({
 });
 
 export type CreateStaffUserSchema = z.infer<typeof createStaffUserSchema>;
+
+export const staffUserListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  tenant_id: z.coerce.number().int().min(1).optional(),
+  status_id: z.coerce.number().int().min(1).optional(),
+  status: z.string().trim().optional(),
+  sort: z.string().optional().default('created_at:desc'),
+});
+
+export type StaffUserListQuerySchema = z.infer<typeof staffUserListQuerySchema>;
