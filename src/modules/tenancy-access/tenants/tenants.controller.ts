@@ -14,12 +14,16 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator.j
 import { ResponseMessage } from '../../../common/decorators/response-message.decorator.js';
 import type { AuthUser } from '../../auth/types/auth.types.js';
 import {
+  agentListQuerySchema,
   branchListQuerySchema,
+  createAgentSchema,
   createBranchSchema,
   createTenantSchema,
   tenantListQuerySchema,
   updateTenantSchema,
+  type AgentListQueryType,
   type BranchListQueryType,
+  type CreateAgentType,
   type CreateBranchType,
   type CreateTenantType,
   type TenantListQueryType,
@@ -86,6 +90,27 @@ export class TenantsController {
     @CurrentUser() user?: AuthUser,
   ) {
     return this.tenantService.getBranches(query, cookieTenantId, user);
+  }
+
+  @Post('agents')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Agent saved successfully')
+  async createAgent(
+    @Body({ schema: createAgentSchema }) payload: CreateAgentType,
+    @Cookie('tenant_id') cookieTenantId?: string,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.tenantService.createAgent(payload, cookieTenantId, user);
+  }
+
+  @Get('agents')
+  @ResponseMessage('Agents retrieved successfully')
+  async getAgents(
+    @Query({ schema: agentListQuerySchema }) query: AgentListQueryType,
+    @Cookie('tenant_id') cookieTenantId?: string,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.tenantService.getAgents(query, cookieTenantId, user);
   }
 
   @Get(':id')

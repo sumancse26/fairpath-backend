@@ -59,3 +59,55 @@ export const branchListQuerySchema = z.object({
 });
 
 export type BranchListQueryType = z.infer<typeof branchListQuerySchema>;
+
+export const createAgentSchema = z.object({
+  id: z.coerce.number().int().positive().nullable().optional(),
+  branch_id: z.coerce.number().int().positive().nullable().optional(),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Agent name is required')
+    .max(100, 'Agent name must be at most 100 characters'),
+  phone: z
+    .string()
+    .trim()
+    .max(30, 'Phone must be at most 30 characters')
+    .nullable()
+    .optional(),
+  email: z
+    .string()
+    .trim()
+    .email('Invalid email address')
+    .max(100, 'Email must be at most 100 characters')
+    .nullable()
+    .optional(),
+  credit_limit: z.coerce
+    .number()
+    .int()
+    .min(0, 'Credit limit must be non-negative')
+    .default(0),
+  current_balance: z.coerce
+    .number()
+    .int()
+    .min(0, 'Current balance must be non-negative')
+    .default(0),
+  commission_rate: z.coerce
+    .number()
+    .min(0, 'Commission rate must be non-negative')
+    .max(100, 'Commission rate must be at most 100')
+    .default(0),
+  status_id: z.coerce.number().int().positive().optional(),
+});
+
+export type CreateAgentType = z.infer<typeof createAgentSchema>;
+
+export const agentListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  sort: z.string().optional().default('id:desc'),
+  search: z.string().trim().optional(),
+  branch_id: z.coerce.number().int().positive().optional(),
+  status: z.string().trim().optional(),
+});
+
+export type AgentListQueryType = z.infer<typeof agentListQuerySchema>;

@@ -8,7 +8,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type {
+  AgentListQueryType,
   BranchListQueryType,
+  CreateAgentType,
   CreateBranchType,
   CreateTenantType,
   TenantListQueryType,
@@ -440,6 +442,305 @@ export class TenantsService {
       })),
       meta: { total, page, limit, pages },
     };
+  }
+
+  async createAgent(
+    payload: CreateAgentType,
+    cookieTenantId?: string,
+    user?: AuthUser,
+  ) {
+    console.log('user', user);
+    if (!user) {
+      throw new UnauthorizedException('Authentication required');
+    }
+
+    const parsedRoleId =
+      user.roleId && /^\d+$/.test(user.roleId.trim())
+        ? BigInt(user.roleId.trim())
+        : null;
+    const isPlatformSuperAdmin = user.isSuperAdmin || parsedRoleId === 1n;
+    const isTenantManager = parsedRoleId === 2n || parsedRoleId === 3n;
+
+    if (!isPlatformSuperAdmin && !isTenantManager) {
+      throw new ForbiddenException(
+        'Only Platform Super Admins, Tenant Admins, and Operations Managers can create agents',
+      );
+    }
+
+    const tenantId = this.resolveRequiredTenantId(cookieTenantId, user);
+
+    const tenant = await this.db.tenant.findUnique({
+      where: { id: tenantId },
+    });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant ${tenantId.toString()} not found`);
+    }
+
+    let branchId: bigint | null = null;
+    if (payload.branch_id !== undefined && payload.branch_id !== null) {
+      branchId = BigInt(payload.branch_id);
+      const branch = await this.db.branch.findUnique({
+        where: { id: branchId },
+        select: { id: true, tenantId: true },
+      });
+      if (!branch) {
+        throw new NotFoundException(`Branch ${payload.branch_id} not found`);
+      }
+      if (branch.tenantId !== tenantId) {
+        throw new ForbiddenException('Branch does not belong to this tenant');
+      }
+    }
+
+    const name = payload.name.trim();
+    const email = payload.email?.trim().toLowerCase() || null;
+
+    const existingTarget =
+      payload.id !== undefined && payload.id !== null
+        ? await this.db.agent.findUnique({
+            where: { id: BigInt(payload.id) },
+            select: { id: true, tenantId: true, statusId: true },
+          })
+        : null;
+
+    if (payload.id !== undefined && payload.id !== null) {
+      if (!existingTarget) {
+        throw new NotFoundException(`Agent ${payload.id} not found`);
+      }
+      if (existingTarget.tenantId !== tenantId) {
+        throw new ForbiddenException('Agent does not belong to this tenant');
+      }
+    }
+
+    const duplicateAgent = await this.db.agent.findFirst({
+      where: {
+        tenantId,
+        ...(existingTarget ? { id: { not: existingTarget.id } } : {}),
+        OR: [
+          { name: { equals: name, mode: 'insensitive' as const } },
+          ...(email
+            ? [{ email: { equals: email, mode: 'insensitive' as const } }]
+            : []),
+        ],
+      },
+      select: { id: true, name: true },
+    });
+    if (duplicateAgent) {
+      const field =
+        duplicateAgent.name.toLowerCase() === name.toLowerCase()
+          ? 'name'
+          : 'email';
+      throw new ConflictException(
+        `Agent with this ${field} already exists for this tenant`,
+      );
+    }
+
+    const statusId =
+      existingTarget && payload.status_id === undefined
+        ? existingTarget.statusId
+        : await this.resolveAgentStatusId(payload.status_id);
+
+    const agentData = {
+      branchId,
+      name,
+      phone: payload.phone?.trim() || null,
+      email,
+      creditLimit: BigInt(payload.credit_limit),
+      currentBalance: BigInt(payload.current_balance),
+      commissionRate: payload.commission_rate.toFixed(2),
+      statusId,
+    };
+
+    const agent = existingTarget
+      ? await this.db.agent.update({
+          where: { id: existingTarget.id },
+          data: agentData,
+          include: {
+            status: { select: { code: true } },
+          },
+        })
+      : await this.db.agent.create({
+          data: {
+            tenantId,
+            ...agentData,
+          },
+          include: {
+            status: { select: { code: true } },
+          },
+        });
+
+    return {
+      id: agent.id.toString(),
+      tenant_id: agent.tenantId.toString(),
+      name: agent.name,
+      status: agent.status.code,
+    };
+  }
+
+  async getAgents(
+    query: AgentListQueryType,
+    cookieTenantId?: string,
+    user?: AuthUser,
+  ) {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: {
+      tenantId?: bigint;
+      branchId?: bigint;
+      statusId?: bigint;
+      status?: { code: string };
+      OR?: Array<
+        | { name: { contains: string; mode: 'insensitive' } }
+        | { email: { contains: string; mode: 'insensitive' } }
+        | { phone: { contains: string; mode: 'insensitive' } }
+      >;
+    } = {};
+
+    if (user && !user.isSuperAdmin) {
+      if (!user.tenantId) {
+        throw new ForbiddenException('User is not assigned to a tenant');
+      }
+      where.tenantId = BigInt(user.tenantId);
+    } else if (cookieTenantId) {
+      where.tenantId = this.parseNumericId(
+        cookieTenantId,
+        'Invalid tenant ID in cookie',
+      );
+    }
+
+    if (query.branch_id !== undefined) {
+      where.branchId = BigInt(query.branch_id);
+    }
+
+    if (query.status) {
+      const trimmed = query.status.trim();
+      if (/^\d+$/.test(trimmed)) {
+        where.statusId = BigInt(trimmed);
+      } else {
+        where.status = { code: trimmed.toUpperCase() };
+      }
+    }
+
+    if (query.search) {
+      const term = query.search.trim();
+      where.OR = [
+        { name: { contains: term, mode: 'insensitive' as const } },
+        { email: { contains: term, mode: 'insensitive' as const } },
+        { phone: { contains: term, mode: 'insensitive' as const } },
+      ];
+    }
+
+    const orderBy = this.parseAgentSort(query.sort);
+
+    const [total, agents] = await Promise.all([
+      this.db.agent.count({ where }),
+      this.db.agent.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          status: { select: { code: true } },
+          branch: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    const pages = Math.ceil(total / limit) || 1;
+
+    return {
+      data: agents.map((a) => ({
+        id: Number(a.id),
+        tenant_id: Number(a.tenantId),
+        branch_id: a.branchId !== null ? Number(a.branchId) : null,
+        branch_name: a.branch?.name ?? null,
+        name: a.name,
+        phone: a.phone,
+        email: a.email,
+        credit_limit: Number(a.creditLimit),
+        current_balance: Number(a.currentBalance),
+        commission_rate: Number(a.commissionRate),
+        status_id: Number(a.statusId),
+        status: a.status.code,
+      })),
+      meta: { total, page, limit, pages },
+    };
+  }
+
+  private resolveRequiredTenantId(
+    cookieTenantId?: string,
+    user?: AuthUser,
+  ): bigint {
+    if (user && !user.isSuperAdmin) {
+      if (!user.tenantId) {
+        throw new ForbiddenException('User is not assigned to a tenant');
+      }
+      return BigInt(user.tenantId);
+    }
+
+    const fromCookie = cookieTenantId?.trim();
+    if (!fromCookie) {
+      throw new UnauthorizedException('Tenant ID is required in cookie');
+    }
+    return this.parseNumericId(fromCookie, 'Invalid tenant ID');
+  }
+
+  private parseNumericId(value: string, errorMessage: string): bigint {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      throw new BadRequestException(errorMessage);
+    }
+    return BigInt(trimmed);
+  }
+
+  private async resolveAgentStatusId(statusId?: number): Promise<bigint> {
+    if (statusId !== undefined) {
+      const status = await this.db.lookupDtl.findUnique({
+        where: { id: BigInt(statusId) },
+        include: { lookupMst: { select: { code: true } } },
+      });
+      if (!status || status.lookupMst.code !== 'AGENT_STATUS') {
+        throw new NotFoundException(`Agent status ${statusId} not found`);
+      }
+      return status.id;
+    }
+
+    const activeStatus = await this.db.lookupDtl.findFirst({
+      where: {
+        code: 'ACTIVE',
+        lookupMst: { code: 'AGENT_STATUS' },
+      },
+      select: { id: true },
+    });
+    if (!activeStatus) {
+      throw new NotFoundException('Lookup AGENT_STATUS.ACTIVE not found');
+    }
+    return activeStatus.id;
+  }
+
+  private parseAgentSort(sortStr?: string) {
+    if (!sortStr) return { id: 'desc' as const };
+    const [field, dir] = sortStr.split(':');
+    const direction =
+      dir?.toLowerCase() === 'asc' ? ('asc' as const) : ('desc' as const);
+
+    switch (field?.toLowerCase()) {
+      case 'name':
+        return { name: direction };
+      case 'credit_limit':
+      case 'creditlimit':
+        return { creditLimit: direction };
+      case 'current_balance':
+      case 'currentbalance':
+        return { currentBalance: direction };
+      case 'commission_rate':
+      case 'commissionrate':
+        return { commissionRate: direction };
+      case 'id':
+      default:
+        return { id: direction };
+    }
   }
 
   private async generateUniqueCode(name: string): Promise<string> {
