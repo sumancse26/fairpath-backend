@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -7,11 +8,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type {
-  CreateTenantType,
+  BranchListQueryType,
   CreateBranchType,
+  CreateTenantType,
   TenantListQueryType,
   UpdateTenantType,
 } from '../dto/tenant.dto.js';
+import type { AuthUser } from '../../auth/types/auth.types.js';
 import { DatabaseService } from '../../../database/database.service.js';
 
 @Injectable()
@@ -105,7 +108,17 @@ export class TenantsService {
     };
   }
 
-  async getTenants(query: TenantListQueryType) {
+  async getTenants(
+    query: TenantListQueryType,
+    roleId?: string,
+    user?: AuthUser,
+  ) {
+    await this.assertSuperAdmin(
+      roleId,
+      user,
+      'Only platform Super Admins can view tenants',
+    );
+
     const page = query.page || 1;
     const limit = query.limit || 10;
     const skip = (page - 1) * limit;
@@ -288,91 +301,62 @@ export class TenantsService {
   }
 
   async createBranch(
-    userId: number,
-    id: number,
     payload: CreateBranchType,
+    cookieTenantId?: string,
+    user?: AuthUser,
   ) {
-    if (
-      !Number.isSafeInteger(userId) ||
-      userId < 1 ||
-      !Number.isSafeInteger(id) ||
-      id < 1
-    ) {
-      throw new BadRequestException('Invalid user ID or tenant ID');
+    let resolvedTenantId: string;
+
+    if (user && !user.isSuperAdmin) {
+      // Tenant admin: use their JWT tenant, ignore cookie
+      if (!user.tenantId) {
+        throw new ForbiddenException('User is not assigned to a tenant');
+      }
+      resolvedTenantId = user.tenantId;
+    } else {
+      // Super admin: tenant_id must come from cookie
+      const fromCookie = cookieTenantId?.trim();
+      if (!fromCookie) {
+        throw new UnauthorizedException('Tenant ID is required in cookie');
+      }
+      if (!/^\d+$/.test(fromCookie)) {
+        throw new BadRequestException('Invalid tenant ID');
+      }
+      resolvedTenantId = fromCookie;
     }
 
-    if (payload.tenant_id !== id) {
-      throw new BadRequestException(
-        'Payload tenant_id must match the tenant ID in the URL',
-      );
-    }
-
-    const user = await this.db.staffUser.findUnique({
-      where: {
-        id: BigInt(userId),
-      },
-      include: {
-        memberships: {
-          include: {
-            role: { select: { isSystem: true, tenantId: true } },
-          },
-        },
-      },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('Authenticated user not found');
-    }
-
-    const isPlatformSuperAdmin = user.memberships.some(
-      (membership) =>
-        membership.tenantId === null &&
-        membership.role.isSystem &&
-        membership.role.tenantId === null,
-    );
-
-    const tenantId = BigInt(id);
-
-    if (!isPlatformSuperAdmin && user.tenantId !== tenantId) {
-      throw new UnauthorizedException('User is not assigned to this tenant');
-    }
-
+    const tenantId = BigInt(resolvedTenantId);
     const tenant = await this.db.tenant.findUnique({
-      where: {
-        id: tenantId,
-      },
+      where: { id: tenantId },
     });
-
     if (!tenant) {
-      throw new NotFoundException(`Tenant ${id} not found`);
+      throw new NotFoundException(`Tenant ${resolvedTenantId} not found`);
     }
 
+    // --- Check duplicate branch name under same tenant ---
     const existingBranch = await this.db.branch.findFirst({
       where: {
         tenantId,
-        OR: [
-          { code: { equals: payload.code, mode: 'insensitive' as const } },
-          { name: { equals: payload.name, mode: 'insensitive' as const } },
-        ],
+        name: { equals: payload.name.trim(), mode: 'insensitive' as const },
       },
+      select: { id: true },
     });
-
     if (existingBranch) {
-      const field =
-        existingBranch.code.toLowerCase() === payload.code.toLowerCase()
-          ? 'code'
-          : 'name';
-      throw new ConflictException(`Branch with this ${field} already exists`);
+      throw new ConflictException(
+        'Branch with this name already exists for this tenant',
+      );
     }
+
+    const code = await this.generateUniqueCode(payload.name);
 
     const branch = await this.db.branch.create({
       data: {
         tenantId,
-        code: payload.code,
-        name: payload.name,
-        city: payload.city || null,
-        address: payload.address || null,
-        phone: payload.phone || null,
+        code,
+        name: payload.name.trim(),
+        city: payload.city.trim(),
+        address: payload.address?.trim() || null,
+        phone: payload.phone?.trim() || null,
       },
     });
 
@@ -385,6 +369,125 @@ export class TenantsService {
       address: branch.address,
       phone: branch.phone,
     };
+  }
+
+  async getBranches(
+    query: BranchListQueryType,
+    cookieTenantId?: string,
+    user?: AuthUser,
+  ) {
+    const page = query.page || 1;
+    const limit = query.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const where: {
+      tenantId?: bigint;
+      OR?: Array<
+        | { name: { contains: string; mode: 'insensitive' } }
+        | { city: { contains: string; mode: 'insensitive' } }
+        | { code: { contains: string; mode: 'insensitive' } }
+      >;
+    } = {};
+
+    if (user && !user.isSuperAdmin) {
+      // Tenant admin: always scoped to their own tenant from JWT (authoritative)
+      if (!user.tenantId) {
+        throw new ForbiddenException('User is not assigned to a tenant');
+      }
+      where.tenantId = BigInt(user.tenantId);
+    } else {
+      // Super admin: optionally filter by tenant via cookie
+      if (cookieTenantId) {
+        // if (!/^\d+$/.test(cookieTenantId.trim())) {
+        //   throw new BadRequestException('Invalid tenant ID in cookie');
+        // }
+        where.tenantId = BigInt(cookieTenantId.trim());
+      }
+    }
+
+    if (query.search) {
+      const term = query.search.trim();
+      where.OR = [
+        { name: { contains: term, mode: 'insensitive' as const } },
+        { city: { contains: term, mode: 'insensitive' as const } },
+        { code: { contains: term, mode: 'insensitive' as const } },
+      ];
+    }
+
+    const orderBy = this.parseBranchSort(query.sort);
+
+    const [total, branches] = await Promise.all([
+      this.db.branch.count({ where }),
+      this.db.branch.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+      }),
+    ]);
+
+    const pages = Math.ceil(total / limit) || 1;
+
+    return {
+      data: branches.map((b) => ({
+        id: Number(b.id),
+        tenant_id: Number(b.tenantId),
+        code: b.code,
+        name: b.name,
+        city: b.city,
+        address: b.address,
+        phone: b.phone,
+      })),
+      meta: { total, page, limit, pages },
+    };
+  }
+
+  private async generateUniqueCode(name: string): Promise<string> {
+    const slug =
+      name
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 12) || 'BRN';
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const suffix = randomBytes(3).toString('hex').toUpperCase();
+      const code = `${slug}-${suffix}`;
+      const existing = await this.db.branch.findFirst({
+        where: { code },
+        select: { id: true },
+      });
+      if (!existing) {
+        return code;
+      }
+    }
+
+    return `${slug}-${Date.now().toString(36).toUpperCase()}`;
+  }
+
+  private async assertSuperAdmin(
+    roleId: string | undefined,
+    user: AuthUser | undefined,
+    forbiddenMessage: string,
+  ): Promise<void> {
+    if (user && !user.isSuperAdmin) {
+      throw new ForbiddenException(forbiddenMessage);
+    }
+
+    if (!roleId) {
+      throw new UnauthorizedException('Authentication required');
+    }
+
+    if (!/^\d+$/.test(roleId.trim())) {
+      throw new BadRequestException('Invalid role ID');
+    }
+
+    const role = await this.db.role.findUnique({
+      where: { id: BigInt(roleId.trim()) },
+    });
+    if (!role || !role.isSystem || role.tenantId !== null) {
+      throw new ForbiddenException(forbiddenMessage);
+    }
   }
 
   private parseSort(sortStr?: string) {
@@ -408,6 +511,25 @@ export class TenantsService {
       case 'createdat':
       default:
         return { createdAt: direction };
+    }
+  }
+
+  private parseBranchSort(sortStr?: string) {
+    if (!sortStr) return { id: 'desc' as const };
+    const [field, dir] = sortStr.split(':');
+    const direction =
+      dir?.toLowerCase() === 'asc' ? ('asc' as const) : ('desc' as const);
+
+    switch (field?.toLowerCase()) {
+      case 'name':
+        return { name: direction };
+      case 'city':
+        return { city: direction };
+      case 'code':
+        return { code: direction };
+      case 'id':
+      default:
+        return { id: direction };
     }
   }
 }

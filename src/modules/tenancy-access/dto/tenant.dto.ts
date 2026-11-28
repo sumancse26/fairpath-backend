@@ -30,12 +30,32 @@ export type UpdateTenantType = z.infer<typeof updateTenantSchema>;
 export type UpdateTenantSchema = UpdateTenantType;
 
 export const createBranchSchema = z.object({
-  tenant_id: z.number().int().min(1, 'Tenant ID is required'),
-  code: z.string().trim().min(1, 'Branch code is required').max(50),
-  name: z.string().trim().min(1, 'Branch name is required').max(100),
-  city: z.string().trim().max(100).nullable().optional(),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Branch name is required')
+    .max(100, 'Branch name must be at most 100 characters'),
+  city: z
+    .string()
+    .trim()
+    .min(1, 'Branch city is required')
+    .max(100, 'Branch city must be at most 100 characters'),
   address: z.string().trim().nullable().optional(),
-  phone: z.string().trim().max(30).nullable().optional(),
+  phone: z
+    .string()
+    .trim()
+    .max(15, 'Phone must be at most 15 characters')
+    .nullable()
+    .optional(),
 });
 
 export type CreateBranchType = z.infer<typeof createBranchSchema>;
+
+export const branchListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  sort: z.string().optional().default('id:desc'),
+  search: z.string().trim().optional(),
+});
+
+export type BranchListQueryType = z.infer<typeof branchListQuerySchema>;

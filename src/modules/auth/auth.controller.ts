@@ -155,6 +155,11 @@ export class AuthController {
       if (user.roleId) {
         res.cookie('role_id', user.roleId, userCookieOptions);
       }
+      if (user.tenantId) {
+        res.cookie('tenant_id', user.tenantId, userCookieOptions);
+      } else {
+        res.clearCookie('tenant_id', { ...baseOptions, httpOnly: false });
+      }
     }
   }
 
@@ -171,5 +176,6 @@ export class AuthController {
     res.clearCookie('user_id', { ...baseOptions, httpOnly: false });
     res.clearCookie('role', { ...baseOptions, httpOnly: false });
     res.clearCookie('role_id', { ...baseOptions, httpOnly: false });
+    res.clearCookie('tenant_id', { ...baseOptions, httpOnly: false });
   }
 }

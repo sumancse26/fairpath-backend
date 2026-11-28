@@ -10,14 +10,18 @@ import {
   Query,
 } from '@nestjs/common';
 import { Cookie } from '../../../common/decorators/cookie.decorator.js';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
 import { ResponseMessage } from '../../../common/decorators/response-message.decorator.js';
+import type { AuthUser } from '../../auth/types/auth.types.js';
 import {
-  createTenantSchema,
+  branchListQuerySchema,
   createBranchSchema,
+  createTenantSchema,
   tenantListQuerySchema,
   updateTenantSchema,
-  type CreateTenantType,
+  type BranchListQueryType,
   type CreateBranchType,
+  type CreateTenantType,
   type TenantListQueryType,
   type UpdateTenantType,
 } from '../dto/tenant.dto.js';
@@ -43,8 +47,11 @@ export class TenantsController {
   @ResponseMessage('Tenants retrieved successfully')
   async getTenants(
     @Query({ schema: tenantListQuerySchema }) query: TenantListQueryType,
+    @Cookie('role_id') cookieRoleId?: string,
+    @CurrentUser() user?: AuthUser,
   ) {
-    return this.tenantService.getTenants(query);
+    const roleId = user?.roleId ?? cookieRoleId;
+    return this.tenantService.getTenants(query, roleId, user);
   }
 
   @Put(':id')
@@ -60,6 +67,27 @@ export class TenantsController {
     return this.tenantService.updateTenant(payload, roleId, id);
   }
 
+  @Post('branches')
+  @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Branch created successfully')
+  async createBranch(
+    @Body({ schema: createBranchSchema }) payload: CreateBranchType,
+    @Cookie('tenant_id') cookieTenantId?: string,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.tenantService.createBranch(payload, cookieTenantId, user);
+  }
+
+  @Get('branches')
+  @ResponseMessage('Branches retrieved successfully')
+  async getBranches(
+    @Query({ schema: branchListQuerySchema }) query: BranchListQueryType,
+    @Cookie('tenant_id') cookieTenantId?: string,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.tenantService.getBranches(query, cookieTenantId, user);
+  }
+
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Tenant Details')
@@ -70,18 +98,5 @@ export class TenantsController {
     const userId = Number(cookieUserId);
 
     return this.tenantService.getTenantDetails(userId, Number(id));
-  }
-
-  @Post(':id/branches')
-  @HttpCode(HttpStatus.OK)
-  @ResponseMessage('Branch Saved Successfully')
-  async createBranch(
-    @Param('id') id: string,
-    @Body({ schema: createBranchSchema }) payload: CreateBranchType,
-    @Cookie('user_id') cookieUserId: string,
-  ) {
-    const userId = Number(cookieUserId);
-
-    return this.tenantService.createBranch(userId, Number(id), payload);
   }
 }

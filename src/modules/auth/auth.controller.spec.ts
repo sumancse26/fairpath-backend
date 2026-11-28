@@ -34,7 +34,13 @@ describe('AuthController', () => {
 
   it('login sets cookies and returns user + accessToken', async () => {
     mockAuthService.login.mockResolvedValue({
-      user: { id: '1', email: 'admin@test.com', fullName: 'Admin' },
+      user: {
+        id: '1',
+        email: 'admin@test.com',
+        fullName: 'Admin',
+        roleId: '2',
+        tenantId: '5',
+      },
       accessToken: 'access-123',
       refreshToken: 'refresh-456',
       expiresIn: 900,
@@ -62,6 +68,16 @@ describe('AuthController', () => {
     expect(mockRes.cookie).toHaveBeenCalledWith(
       'user_id',
       '1',
+      expect.objectContaining({ httpOnly: false }),
+    );
+    expect(mockRes.cookie).toHaveBeenCalledWith(
+      'role_id',
+      '2',
+      expect.objectContaining({ httpOnly: false }),
+    );
+    expect(mockRes.cookie).toHaveBeenCalledWith(
+      'tenant_id',
+      '5',
       expect.objectContaining({ httpOnly: false }),
     );
   });
@@ -115,6 +131,10 @@ describe('AuthController', () => {
     expect(mockRes.clearCookie).toHaveBeenCalledWith(
       'refresh_token',
       expect.objectContaining({ path: '/api' }),
+    );
+    expect(mockRes.clearCookie).toHaveBeenCalledWith(
+      'tenant_id',
+      expect.any(Object),
     );
   });
 
